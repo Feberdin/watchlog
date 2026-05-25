@@ -152,3 +152,17 @@ export type SwipeActionResult = {
   jellyfinSynced: boolean;
   jellyseerrRequested: boolean;
 };
+
+export type SwipeHistoryItem = {
+  decisionId: string;
+  mediaId: string;
+  action: "seen" | "skip" | "want";
+  externalStatus: string | null;
+  errorMessage: string | null;
+  decidedAt: string;
+  title: string;
+  type: "movie" | "show";
+  year: number | null;
+  posterUrl: string | null;
+  tmdbId: string | null;
+};

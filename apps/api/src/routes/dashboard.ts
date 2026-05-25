@@ -12,21 +12,21 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const user = request.requireUser();
     const [events, movieCount, episodeCount, rewatchCount] = await Promise.all([
       app.prisma.watchEvent.findMany({
-        where: { userId: user.id },
+        where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
         include: { media: true },
         orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
         take: 10,
       }),
-      app.prisma.watchEvent.count({ where: { userId: user.id, media: { type: "movie" } } }),
-      app.prisma.watchEvent.count({ where: { userId: user.id, media: { type: "episode" } } }),
-      app.prisma.watchEvent.count({ where: { userId: user.id, rewatchIndex: { gt: 1 } } }),
+      app.prisma.watchEvent.count({ where: { userId: user.id, media: { type: "movie", metadataSource: { not: "swipe-tmdb" } } } }),
+      app.prisma.watchEvent.count({ where: { userId: user.id, media: { type: "episode", metadataSource: { not: "swipe-tmdb" } } } }),
+      app.prisma.watchEvent.count({ where: { userId: user.id, rewatchIndex: { gt: 1 }, media: { metadataSource: { not: "swipe-tmdb" } } } }),
     ]);
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
     const todayCount = await app.prisma.watchEvent.count({
-      where: { userId: user.id, watchedAt: { gte: todayStart } },
+      where: { userId: user.id, watchedAt: { gte: todayStart }, media: { metadataSource: { not: "swipe-tmdb" } } },
     });
 
     return {

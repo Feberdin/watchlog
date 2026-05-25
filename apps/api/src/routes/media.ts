@@ -12,6 +12,7 @@ export const mediaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/media", async (request) => {
     request.requireUser();
     return app.prisma.media.findMany({
+      where: { metadataSource: { not: "swipe-tmdb" } },
       orderBy: [{ updatedAt: "desc" }],
       take: 200,
     });

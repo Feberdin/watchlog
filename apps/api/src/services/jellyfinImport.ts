@@ -131,45 +131,53 @@ async function importOneWatchedItem(
 
   const watchedAt = parseLastPlayedDate(item);
   const marker = importMarker(item, watchedAt);
-  const media = await prisma.media.upsert({
-    where: { jellyfinItemId: item.Id },
-    update: {
-      title: item.Name,
-      year: item.ProductionYear ?? null,
-      overview: item.Overview ?? null,
-      runtimeSeconds: ticksToSeconds(item.RunTimeTicks),
-      tmdbId: providerId(item, "Tmdb"),
-      imdbId: providerId(item, "Imdb"),
-      tvdbId: providerId(item, "Tvdb"),
-      jellyfinSeriesId: seriesId,
-      originalTitle: seriesTitle,
-      parentMediaId,
-      seasonNumber,
-      episodeNumber,
-      posterUrl,
-      metadataSource: "jellyfin",
-      metadataLastSyncedAt: new Date(),
-    },
-    create: {
-      type: mediaType,
-      title: item.Name,
-      year: item.ProductionYear ?? null,
-      overview: item.Overview ?? null,
-      runtimeSeconds: ticksToSeconds(item.RunTimeTicks),
-      tmdbId: providerId(item, "Tmdb"),
-      imdbId: providerId(item, "Imdb"),
-      tvdbId: providerId(item, "Tvdb"),
-      jellyfinItemId: item.Id,
-      jellyfinSeriesId: seriesId,
-      originalTitle: seriesTitle,
-      parentMediaId,
-      seasonNumber,
-      episodeNumber,
-      posterUrl,
-      metadataSource: "jellyfin",
-      metadataLastSyncedAt: new Date(),
-    },
-  });
+  const itemTmdbId = providerId(item, "Tmdb");
+  const itemImdbId = providerId(item, "Imdb");
+  const itemTvdbId = providerId(item, "Tvdb");
+  const mediaData = {
+    title: item.Name,
+    year: item.ProductionYear ?? null,
+    overview: item.Overview ?? null,
+    runtimeSeconds: ticksToSeconds(item.RunTimeTicks),
+    tmdbId: itemTmdbId,
+    imdbId: itemImdbId,
+    tvdbId: itemTvdbId,
+    jellyfinSeriesId: seriesId,
+    originalTitle: seriesTitle,
+    parentMediaId,
+    seasonNumber,
+    episodeNumber,
+    posterUrl,
+    metadataSource: "jellyfin",
+    metadataLastSyncedAt: new Date(),
+  };
+  const existingSwipeMedia = mediaType === "movie" && itemTmdbId
+    ? await prisma.media.findFirst({
+        where: {
+          type: "movie",
+          tmdbId: itemTmdbId,
+          jellyfinItemId: null,
+          metadataSource: { in: ["swipe-tmdb", "tmdb"] },
+        },
+      })
+    : null;
+  const media = existingSwipeMedia
+    ? await prisma.media.update({
+        where: { id: existingSwipeMedia.id },
+        data: {
+          ...mediaData,
+          jellyfinItemId: item.Id,
+        },
+      })
+    : await prisma.media.upsert({
+        where: { jellyfinItemId: item.Id },
+        update: mediaData,
+        create: {
+          type: mediaType,
+          jellyfinItemId: item.Id,
+          ...mediaData,
+        },
+      });
 
   const existing = await prisma.watchEvent.findFirst({
     where: {

@@ -110,33 +110,52 @@ async function upsertEpisodeFromJellyfin(
   const seriesTmdbId = seriesItem ? providerId(seriesItem, "Tmdb") : null;
   const seriesImdbId = seriesItem ? providerId(seriesItem, "Imdb") : null;
   const seriesTvdbId = seriesItem ? providerId(seriesItem, "Tvdb") : null;
-  const parent = await prisma.media.upsert({
-    where: { jellyfinItemId: seriesId },
-    update: {
-      title: seriesTitle,
-      ...(seriesItem?.ProductionYear ? { year: seriesItem.ProductionYear } : {}),
-      ...(seriesItem?.Overview ? { overview: seriesItem.Overview } : {}),
-      ...(seriesTmdbId ? { tmdbId: seriesTmdbId } : {}),
-      ...(seriesImdbId ? { imdbId: seriesImdbId } : {}),
-      ...(seriesTvdbId ? { tvdbId: seriesTvdbId } : {}),
-      ...(seriesPosterUrl ? { posterUrl: seriesPosterUrl } : {}),
-      metadataSource: "jellyfin",
-      metadataLastSyncedAt: new Date(),
-    },
-    create: {
-      type: "show",
-      title: seriesTitle,
-      year: seriesItem?.ProductionYear ?? null,
-      overview: seriesItem?.Overview ?? null,
-      tmdbId: seriesTmdbId,
-      imdbId: seriesImdbId,
-      tvdbId: seriesTvdbId,
-      jellyfinItemId: seriesId,
-      posterUrl: seriesPosterUrl,
-      metadataSource: "jellyfin",
-      metadataLastSyncedAt: new Date(),
-    },
-  });
+  const parentData = {
+    title: seriesTitle,
+    ...(seriesItem?.ProductionYear ? { year: seriesItem.ProductionYear } : {}),
+    ...(seriesItem?.Overview ? { overview: seriesItem.Overview } : {}),
+    ...(seriesTmdbId ? { tmdbId: seriesTmdbId } : {}),
+    ...(seriesImdbId ? { imdbId: seriesImdbId } : {}),
+    ...(seriesTvdbId ? { tvdbId: seriesTvdbId } : {}),
+    ...(seriesPosterUrl ? { posterUrl: seriesPosterUrl } : {}),
+    metadataSource: "jellyfin",
+    metadataLastSyncedAt: new Date(),
+  };
+  const existingSwipeShow = seriesTmdbId
+    ? await prisma.media.findFirst({
+        where: {
+          type: "show",
+          tmdbId: seriesTmdbId,
+          jellyfinItemId: null,
+          metadataSource: { in: ["swipe-tmdb", "tmdb"] },
+        },
+      })
+    : null;
+  const parent = existingSwipeShow
+    ? await prisma.media.update({
+      where: { id: existingSwipeShow.id },
+      data: {
+        ...parentData,
+        jellyfinItemId: seriesId,
+      },
+    })
+    : await prisma.media.upsert({
+      where: { jellyfinItemId: seriesId },
+      update: parentData,
+      create: {
+        type: "show",
+        title: seriesTitle,
+        year: seriesItem?.ProductionYear ?? null,
+        overview: seriesItem?.Overview ?? null,
+        tmdbId: seriesTmdbId,
+        imdbId: seriesImdbId,
+        tvdbId: seriesTvdbId,
+        jellyfinItemId: seriesId,
+        posterUrl: seriesPosterUrl,
+        metadataSource: "jellyfin",
+        metadataLastSyncedAt: new Date(),
+      },
+    });
 
   const episodeTmdbId = providerId(item, "Tmdb");
   const episodeImdbId = providerId(item, "Imdb");
@@ -227,7 +246,7 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
   }
 
   const shows = await prisma.media.findMany({
-    where: { type: "show" },
+    where: { type: "show", metadataSource: { not: "swipe-tmdb" } },
     include: { children: { where: { type: "episode" } } },
     orderBy: { title: "asc" },
   });
@@ -348,14 +367,28 @@ export async function syncJellyfinSeriesCatalogIfStale(prisma: PrismaClient, use
   const staleShow = await prisma.media.findFirst({
     where: {
       type: "show",
+      metadataSource: { not: "swipe-tmdb" },
       OR: [
-        { metadataLastSyncedAt: null },
-        { posterUrl: null },
+        { jellyfinItemId: { not: null } },
+        { children: { some: { type: "episode" } } },
       ],
+      AND: {
+        OR: [
+          { metadataLastSyncedAt: null },
+          { posterUrl: null },
+        ],
+      },
     },
   });
   const oldestSyncedShow = await prisma.media.findFirst({
-    where: { type: "show" },
+    where: {
+      type: "show",
+      metadataSource: { not: "swipe-tmdb" },
+      OR: [
+        { jellyfinItemId: { not: null } },
+        { children: { some: { type: "episode" } } },
+      ],
+    },
     orderBy: { metadataLastSyncedAt: "asc" },
   });
 
@@ -369,7 +402,14 @@ export async function syncJellyfinSeriesCatalogIfStale(prisma: PrismaClient, use
 
 export async function getSeriesCatalog(prisma: PrismaClient, userId: string, options: { includeSpecials?: boolean } = {}): Promise<SeriesCatalogItem[]> {
   const shows = await prisma.media.findMany({
-    where: { type: "show" },
+    where: {
+      type: "show",
+      metadataSource: { not: "swipe-tmdb" },
+      OR: [
+        { jellyfinItemId: { not: null } },
+        { children: { some: { type: "episode" } } },
+      ],
+    },
     include: {
       children: {
         where: {

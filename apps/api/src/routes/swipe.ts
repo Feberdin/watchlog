@@ -7,7 +7,7 @@
 
 import type { FastifyPluginAsync } from "fastify";
 import { swipeActionSchema, swipeCandidateQuerySchema } from "@watchlog/shared";
-import { applySwipeAction, listSwipeCandidates } from "../services/swipe.js";
+import { applySwipeAction, listSwipeCandidates, listSwipeHistory } from "../services/swipe.js";
 
 export const swipeRoutes: FastifyPluginAsync = async (app) => {
   app.get("/swipe/candidates", async (request) => {
@@ -20,5 +20,10 @@ export const swipeRoutes: FastifyPluginAsync = async (app) => {
     const user = request.requireUser();
     const input = swipeActionSchema.parse(request.body);
     return applySwipeAction(app.prisma, user, input.mediaId, input.action);
+  });
+
+  app.get("/swipe/history", async (request) => {
+    const user = request.requireUser();
+    return listSwipeHistory(app.prisma, user.id);
   });
 };

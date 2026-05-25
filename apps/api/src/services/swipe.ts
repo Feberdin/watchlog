@@ -6,7 +6,7 @@
  */
 
 import type { Media, MediaType, PrismaClient, User } from "@prisma/client";
-import type { SwipeActionResult, SwipeCandidate } from "@watchlog/shared";
+import type { SwipeActionResult, SwipeCandidate, SwipeHistoryItem } from "@watchlog/shared";
 import { markJellyfinItemPlayed } from "./jellyfinClient.js";
 import { requestJellyseerrMedia } from "./jellyseerrClient.js";
 import { getSetting } from "./settings.js";
@@ -52,6 +52,8 @@ function toCandidate(media: Media, recommendation?: TmdbRecommendation): SwipeCa
   };
 }
 
+const SWIPE_METADATA_SOURCE = "swipe-tmdb";
+
 async function upsertRecommendation(prisma: PrismaClient, recommendation: TmdbRecommendation): Promise<Media> {
   const existing = await prisma.media.findFirst({
     where: {
@@ -71,7 +73,7 @@ async function upsertRecommendation(prisma: PrismaClient, recommendation: TmdbRe
     backdropPath: recommendation.backdropPath,
     posterUrl: recommendation.posterUrl,
     backdropUrl: recommendation.backdropUrl,
-    metadataSource: "tmdb",
+    metadataSource: SWIPE_METADATA_SOURCE,
     metadataLastSyncedAt: new Date(),
   };
 
@@ -158,6 +160,31 @@ export async function listSwipeCandidates(
   });
 
   return media.map((item) => toCandidate(item));
+}
+
+export async function listSwipeHistory(prisma: PrismaClient, userId: string): Promise<SwipeHistoryItem[]> {
+  const decisions = await prisma.swipeDecision.findMany({
+    where: { userId },
+    include: { media: true },
+    orderBy: { updatedAt: "desc" },
+    take: 200,
+  });
+
+  return decisions
+    .filter((decision) => decision.action === "seen" || decision.action === "skip" || decision.action === "want")
+    .map((decision) => ({
+      decisionId: decision.id,
+      mediaId: decision.mediaId,
+      action: decision.action as "seen" | "skip" | "want",
+      externalStatus: decision.externalStatus,
+      errorMessage: decision.errorMessage,
+      decidedAt: decision.updatedAt.toISOString(),
+      title: decision.media.title,
+      type: decision.media.type as "movie" | "show",
+      year: decision.media.year,
+      posterUrl: decision.media.posterUrl,
+      tmdbId: decision.media.tmdbId,
+    }));
 }
 
 async function markSeen(prisma: PrismaClient, user: User, media: Media): Promise<Pick<SwipeActionResult, "jellyfinSynced" | "jellyseerrRequested" | "message">> {

@@ -7,7 +7,7 @@
 
 import { ArrowDown, ArrowLeft, ArrowUp, Check, EyeOff, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { SwipeActionResult, SwipeCandidate } from "@watchlog/shared";
+import type { SwipeActionResult, SwipeCandidate, SwipeHistoryItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 
 type SwipeAction = "seen" | "skip" | "want";
@@ -50,6 +50,7 @@ export function SwipePage() {
   const [status, setStatus] = useState("Lade Vorschlaege...");
   const [drag, setDrag] = useState({ active: false, startX: 0, startY: 0, x: 0, y: 0 });
   const [lastResult, setLastResult] = useState<SwipeActionResult | null>(null);
+  const [history, setHistory] = useState<SwipeHistoryItem[]>([]);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   const current = cards[0] ?? null;
@@ -68,8 +69,14 @@ export function SwipePage() {
     }
   }
 
+  async function loadHistory() {
+    const next = await apiRequest<SwipeHistoryItem[]>("/api/swipe/history");
+    setHistory(next);
+  }
+
   useEffect(() => {
     void loadCandidates();
+    void loadHistory().catch(() => undefined);
   }, []);
 
   async function submitAction(action: SwipeAction) {
@@ -86,10 +93,35 @@ export function SwipePage() {
       setCards((existing) => existing.slice(1));
       setStatus(result.message);
       setDrag({ active: false, startX: 0, startY: 0, x: 0, y: 0 });
+      await loadHistory();
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Swipe konnte nicht gespeichert werden.");
       setLastResult(null);
       setDrag({ active: false, startX: 0, startY: 0, x: 0, y: 0 });
+      await loadHistory().catch(() => undefined);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submitHistoryAction(mediaId: string, action: SwipeAction) {
+    if (pending) return;
+    setPending(true);
+    setLastResult(null);
+    setStatus(`${actionText[action]} wird gespeichert...`);
+    try {
+      const result = await apiRequest<SwipeActionResult>("/api/swipe/action", {
+        method: "POST",
+        body: JSON.stringify({ mediaId, action }),
+      });
+      setStatus(result.message);
+      setLastResult(result);
+      setCards((existing) => existing.filter((card) => card.id !== mediaId));
+      await loadHistory();
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Swipe-Entscheidung konnte nicht geaendert werden.");
+      setLastResult(null);
+      await loadHistory().catch(() => undefined);
     } finally {
       setPending(false);
     }
@@ -218,6 +250,46 @@ export function SwipePage() {
             <ArrowDown className="hidden h-4 w-4" aria-hidden="true" />
             Nicht gesehen
           </button>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-md rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Swipe-Verlauf</h2>
+            <p className="text-sm text-slate-400">Hier kannst du spaeter eine Entscheidung aendern.</p>
+          </div>
+          <button className="rounded-md bg-slate-800 px-3 py-2 text-sm text-slate-200" onClick={() => void loadHistory()}>
+            Aktualisieren
+          </button>
+        </div>
+        <div className="mt-4 space-y-3">
+          {history.length === 0 && <p className="text-sm text-slate-400">Noch keine Swipe-Entscheidungen.</p>}
+          {history.slice(0, 20).map((item) => (
+            <div key={item.decisionId} className="flex gap-3 rounded-md border border-slate-800 bg-slate-950 p-2">
+              <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-slate-800">
+                {item.posterUrl && <img className="h-full w-full object-cover" src={item.posterUrl} alt="" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{item.title}</p>
+                <p className="text-xs text-slate-400">
+                  {item.type === "movie" ? "Film" : "Serie"}{item.year ? ` · ${item.year}` : ""} · {actionText[item.action]}
+                </p>
+                {item.errorMessage && <p className="mt-1 line-clamp-2 text-xs text-amber-200">{item.errorMessage}</p>}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button className="rounded bg-emerald-500 px-2 py-1 text-xs font-medium text-slate-950" onClick={() => void submitHistoryAction(item.mediaId, "seen")}>
+                    Gesehen
+                  </button>
+                  <button className="rounded bg-amber-300 px-2 py-1 text-xs font-medium text-slate-950" onClick={() => void submitHistoryAction(item.mediaId, "want")}>
+                    Will ich
+                  </button>
+                  <button className="rounded bg-slate-800 px-2 py-1 text-xs font-medium text-slate-100" onClick={() => void submitHistoryAction(item.mediaId, "skip")}>
+                    Nicht gesehen
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>

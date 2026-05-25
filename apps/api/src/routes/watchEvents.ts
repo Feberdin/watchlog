@@ -13,7 +13,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
   app.get("/watch-events", async (request) => {
     const user = request.requireUser();
     const rows = await app.prisma.watchEvent.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
       include: { media: { include: { parent: true } } },
       orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
       take: 300,

@@ -20,7 +20,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
   app.get("/export/json", async (request) => {
     const user = request.requireUser();
     return app.prisma.watchEvent.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
       include: { media: true },
       orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
     });
@@ -29,7 +29,7 @@ export const exportRoutes: FastifyPluginAsync = async (app) => {
   app.get("/export/csv", async (request, reply) => {
     const user = request.requireUser();
     const rows = await app.prisma.watchEvent.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
       include: { media: true },
       orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
     });
