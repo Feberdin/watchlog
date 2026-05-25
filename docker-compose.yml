@@ -23,6 +23,7 @@ services:
 
   watchlog:
     build: .
+    pull_policy: build
     container_name: watchlog
     restart: unless-stopped
     depends_on:
