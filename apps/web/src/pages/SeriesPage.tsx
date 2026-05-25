@@ -12,7 +12,8 @@ import { apiRequest } from "../api/client";
 
 function episodeTitle(episode: SeriesEpisode) {
   const number = episode.episodeNumber != null ? `E${String(episode.episodeNumber).padStart(2, "0")}` : "E?";
-  return `${number} ${episode.title}`;
+  const year = episode.year ? ` (${episode.year})` : "";
+  return `${number} ${episode.title}${year}`;
 }
 
 function watchedDate(value: string | null) {
@@ -126,7 +127,7 @@ export function SeriesPage() {
                 <div className="min-w-0 flex-1">
                   <button className="flex min-w-0 items-center gap-2 text-left font-medium" onClick={() => setExpandedSeries((current) => ({ ...current, [item.id]: !open }))}>
                     {open ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
-                    <span className="truncate">{item.title}</span>
+                    <span className="truncate">{item.title}{item.startYear ? ` (${item.startYear})` : ""}</span>
                     {item.complete && <CheckCircle2 className="h-5 w-5 text-teal-300" aria-label="Komplett gesehen" />}
                   </button>
                   <p className="mt-1 text-sm text-slate-400">{item.watchedEpisodes} / {item.totalEpisodes} Episoden gesehen</p>
@@ -146,7 +147,7 @@ export function SeriesPage() {
                         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                           <button className="flex items-center gap-2 text-left font-medium" onClick={() => setExpandedSeasons((current) => ({ ...current, [seasonKey]: !seasonOpen }))}>
                             {seasonOpen ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
-                            Staffel {season.seasonNumber ?? "?"}
+                            Staffel {season.seasonNumber ?? "?"}{season.startYear ? ` (${season.startYear})` : ""}
                             {season.complete && <CheckCircle2 className="h-4 w-4 text-teal-300" aria-label="Staffel komplett gesehen" />}
                           </button>
                           <div className="flex items-center gap-3 text-sm text-slate-400">

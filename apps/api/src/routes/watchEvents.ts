@@ -19,7 +19,19 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       take: 300,
     });
 
-    return rows.map((row) => ({
+    const exactDuplicateKeys = new Set<string>();
+    const uniqueRows = rows.filter((row) => {
+      const watchedKey = row.watchedAt?.getTime().toString() ?? "unknown";
+      const key = `${row.mediaId}:${row.source}:${watchedKey}`;
+      if (exactDuplicateKeys.has(key)) {
+        return false;
+      }
+
+      exactDuplicateKeys.add(key);
+      return true;
+    });
+
+    return uniqueRows.map((row) => ({
       id: row.id,
       mediaId: row.mediaId,
       title: row.media.title,

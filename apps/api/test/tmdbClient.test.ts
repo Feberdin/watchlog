@@ -1,12 +1,12 @@
 /**
- * Purpose: Unit tests for TMDb metadata normalization helpers.
- * Input/Output: Image base/path inputs produce browser-ready URLs.
+ * Purpose: Unit tests for TMDb metadata normalization helpers and TV catalog loading.
+ * Input/Output: Image paths and mocked TMDb responses become browser-ready metadata.
  * Invariants: Missing image paths stay null; callers should not render broken URLs.
- * Debugging: If poster images break in the UI, verify TMDb imageBaseUrl settings and this helper first.
+ * Debugging: If poster images or missing episodes break in the UI, verify TMDb image settings and mocked response shapes.
  */
 
-import { describe, expect, it } from "vitest";
-import { buildTmdbImageUrl } from "../src/services/tmdbClient.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildTmdbImageUrl, getTmdbSeasonEpisodes, getTmdbTvCatalog } from "../src/services/tmdbClient.js";
 
 describe("buildTmdbImageUrl", () => {
   it("builds a TMDb image URL with a size segment", () => {
@@ -16,5 +16,55 @@ describe("buildTmdbImageUrl", () => {
 
   it("returns null when TMDb has no image path", () => {
     expect(buildTmdbImageUrl("https://image.tmdb.org/t/p", null)).toBeNull();
+  });
+});
+
+describe("TMDb TV catalog", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("normalizes show seasons and season episodes", async () => {
+    const settings = {
+      tmdbBearerToken: "token",
+      preferredLanguage: "de-DE",
+      fallbackLanguage: "en-US",
+      imageBaseUrl: "https://image.tmdb.org/t/p",
+    };
+
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 66732,
+          name: "Stranger Things",
+          first_air_date: "2016-07-15",
+          poster_path: "/show.jpg",
+          external_ids: { imdb_id: "tt4574334", tvdb_id: 305288 },
+          seasons: [{ id: 1, name: "Staffel 1", season_number: 1, air_date: "2016-07-15", episode_count: 8 }],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 11,
+          season_number: 1,
+          episodes: [{ id: 101, name: "Kapitel eins", season_number: 1, episode_number: 1, air_date: "2016-07-15", runtime: 49 }],
+        }),
+      } as Response);
+
+    const catalog = await getTmdbTvCatalog(settings, 66732);
+    const episodes = await getTmdbSeasonEpisodes(settings, 66732, 1);
+    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+
+    expect(catalog).toMatchObject({
+      title: "Stranger Things",
+      startYear: 2016,
+      imdbId: "tt4574334",
+      tvdbId: "305288",
+    });
+    expect(catalog.seasons[0]).toMatchObject({ seasonNumber: 1, startYear: 2016, episodeCount: 8 });
+    expect(episodes[0]).toMatchObject({ title: "Kapitel eins", seasonNumber: 1, episodeNumber: 1, year: 2016, runtimeSeconds: 2940 });
+    expect(firstUrl.searchParams.get("append_to_response")).toBe("external_ids");
   });
 });

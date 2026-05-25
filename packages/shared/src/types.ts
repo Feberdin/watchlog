@@ -100,6 +100,7 @@ export type JellyfinWatchedImportResult = {
 export type SeriesEpisode = {
   id: string;
   title: string;
+  year: number | null;
   seasonNumber: number | null;
   episodeNumber: number | null;
   watched: boolean;
@@ -109,6 +110,7 @@ export type SeriesEpisode = {
 
 export type SeriesSeason = {
   seasonNumber: number | null;
+  startYear: number | null;
   episodes: SeriesEpisode[];
   watchedEpisodes: number;
   totalEpisodes: number;
@@ -118,6 +120,7 @@ export type SeriesSeason = {
 export type SeriesCatalogItem = {
   id: string;
   title: string;
+  startYear: number | null;
   posterUrl: string | null;
   watchedEpisodes: number;
   totalEpisodes: number;

@@ -1,8 +1,8 @@
 /**
- * Purpose: TMDb API client for metadata search and movie/show detail import.
- * Input/Output: A bearer token and search/import parameters become normalized WatchLog metadata.
+ * Purpose: TMDb API client for metadata search, movie/show import, and optional TV episode catalog completion.
+ * Input/Output: A bearer token plus search/import parameters become normalized WatchLog metadata.
  * Invariants: Calls are limited to api.themoviedb.org and image URLs to the configured image base.
- * Debugging: Use /api/settings/tmdb/test and /api/metadata/tmdb/search with sanitized titles.
+ * Debugging: Use /api/settings/tmdb/test first; catalog gaps usually mean missing TMDb IDs on the Jellyfin series.
  */
 
 import type { TmdbSearchResult } from "@watchlog/shared";
@@ -49,6 +49,36 @@ type TmdbMovieDetail = TmdbMovieResult & {
 
 type TmdbShowDetail = TmdbShowResult & {
   episode_run_time?: number[];
+  seasons?: Array<{
+    id?: number;
+    name?: string;
+    season_number?: number;
+    air_date?: string | null;
+    episode_count?: number;
+    poster_path?: string | null;
+  }>;
+  external_ids?: {
+    imdb_id?: string | null;
+    tvdb_id?: number | null;
+  };
+};
+
+type TmdbSeasonDetail = {
+  id?: number;
+  name?: string;
+  season_number?: number;
+  air_date?: string | null;
+  poster_path?: string | null;
+  episodes?: Array<{
+    id?: number;
+    name?: string;
+    overview?: string;
+    air_date?: string | null;
+    runtime?: number | null;
+    season_number?: number;
+    episode_number?: number;
+    still_path?: string | null;
+  }>;
 };
 
 export type TmdbSettingsForClient = {
@@ -56,6 +86,41 @@ export type TmdbSettingsForClient = {
   preferredLanguage: string;
   fallbackLanguage: string;
   imageBaseUrl: string;
+};
+
+export type TmdbTvSeasonSummary = {
+  tmdbId: number;
+  seasonNumber: number;
+  name: string | null;
+  airDate: string | null;
+  startYear: number | null;
+  episodeCount: number | null;
+  posterUrl: string | null;
+};
+
+export type TmdbTvEpisode = {
+  tmdbId: number;
+  title: string;
+  overview: string | null;
+  airDate: string | null;
+  year: number | null;
+  seasonNumber: number;
+  episodeNumber: number;
+  runtimeSeconds: number | null;
+  posterUrl: string | null;
+};
+
+export type TmdbTvCatalog = {
+  tmdbId: number;
+  title: string;
+  originalTitle: string | null;
+  startYear: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  imdbId: string | null;
+  tvdbId: string | null;
+  seasons: TmdbTvSeasonSummary[];
 };
 
 function authHeaders(settings: TmdbSettingsForClient) {
@@ -73,6 +138,14 @@ function yearFromDate(value: string | undefined): number | null {
 
   const parsed = Number(value.slice(0, 4));
   return Number.isInteger(parsed) ? parsed : null;
+}
+
+function runtimeMinutesToSeconds(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.round(value * 60);
 }
 
 export function buildTmdbImageUrl(imageBaseUrl: string, filePath: string | null | undefined, size = "w342"): string | null {
@@ -169,4 +242,71 @@ export async function getTmdbDetails(settings: TmdbSettingsForClient, type: "mov
     runtimeSeconds: detail.episode_run_time?.[0] ? detail.episode_run_time[0] * 60 : null,
     imdbId: null,
   };
+}
+
+function seasonSummaryFromTmdb(season: NonNullable<TmdbShowDetail["seasons"]>[number], imageBaseUrl: string): TmdbTvSeasonSummary | null {
+  if (typeof season.season_number !== "number") {
+    return null;
+  }
+
+  return {
+    tmdbId: season.id ?? season.season_number,
+    seasonNumber: season.season_number,
+    name: season.name ?? null,
+    airDate: season.air_date ?? null,
+    startYear: yearFromDate(season.air_date ?? undefined),
+    episodeCount: typeof season.episode_count === "number" ? season.episode_count : null,
+    posterUrl: buildTmdbImageUrl(imageBaseUrl, season.poster_path, "w342"),
+  };
+}
+
+function episodeFromTmdb(episode: NonNullable<TmdbSeasonDetail["episodes"]>[number], imageBaseUrl: string): TmdbTvEpisode | null {
+  if (typeof episode.id !== "number" || typeof episode.season_number !== "number" || typeof episode.episode_number !== "number") {
+    return null;
+  }
+
+  return {
+    tmdbId: episode.id,
+    title: episode.name?.trim() || `Episode ${episode.episode_number}`,
+    overview: episode.overview ?? null,
+    airDate: episode.air_date ?? null,
+    year: yearFromDate(episode.air_date ?? undefined),
+    seasonNumber: episode.season_number,
+    episodeNumber: episode.episode_number,
+    runtimeSeconds: runtimeMinutesToSeconds(episode.runtime),
+    posterUrl: buildTmdbImageUrl(imageBaseUrl, episode.still_path, "w342"),
+  };
+}
+
+export async function getTmdbTvCatalog(settings: TmdbSettingsForClient, tmdbId: number): Promise<TmdbTvCatalog> {
+  const detail = await tmdbGet<TmdbShowDetail>(`/tv/${tmdbId}`, settings, {
+    language: settings.preferredLanguage,
+    append_to_response: "external_ids",
+  });
+  const result = showToSearchResult(detail, settings.imageBaseUrl);
+
+  return {
+    tmdbId,
+    title: result.title,
+    originalTitle: result.originalTitle,
+    startYear: result.year,
+    overview: result.overview,
+    posterUrl: result.posterUrl,
+    backdropUrl: result.backdropUrl,
+    imdbId: detail.external_ids?.imdb_id ?? null,
+    tvdbId: detail.external_ids?.tvdb_id ? String(detail.external_ids.tvdb_id) : null,
+    seasons: (detail.seasons ?? [])
+      .map((season) => seasonSummaryFromTmdb(season, settings.imageBaseUrl))
+      .filter((season): season is TmdbTvSeasonSummary => Boolean(season)),
+  };
+}
+
+export async function getTmdbSeasonEpisodes(settings: TmdbSettingsForClient, tmdbId: number, seasonNumber: number): Promise<TmdbTvEpisode[]> {
+  const detail = await tmdbGet<TmdbSeasonDetail>(`/tv/${tmdbId}/season/${seasonNumber}`, settings, {
+    language: settings.preferredLanguage,
+  });
+
+  return (detail.episodes ?? [])
+    .map((episode) => episodeFromTmdb(episode, settings.imageBaseUrl))
+    .filter((episode): episode is TmdbTvEpisode => Boolean(episode));
 }

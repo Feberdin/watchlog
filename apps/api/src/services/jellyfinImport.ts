@@ -55,6 +55,10 @@ function importMarker(item: JellyfinWatchedItem, watchedAt: Date | null): string
   return `jellyfin-import:${item.Id ?? "unknown"}:${watchedAt?.toISOString() ?? "unknown"}`;
 }
 
+function sameWatchedAtFilter(watchedAt: Date | null) {
+  return watchedAt ? { watchedAt } : { watchedAt: null };
+}
+
 function mediaTypeFromJellyfin(item: JellyfinWatchedItem): "movie" | "episode" | null {
   if (item.Type === "Movie") {
     return "movie";
@@ -171,7 +175,8 @@ async function importOneWatchedItem(
     where: {
       userId: user.id,
       mediaId: media.id,
-      jellyfinPlaySessionId: marker,
+      source: "jellyfin",
+      ...sameWatchedAtFilter(watchedAt),
     },
   });
   if (existing) {
