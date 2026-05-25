@@ -5,7 +5,7 @@
  * Debugging: If cards do not move, check browser network calls to `/api/swipe/action` and server logs.
  */
 
-import { ArrowDown, ArrowLeft, ArrowUp, Check, EyeOff, RotateCcw } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, EyeOff, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SwipeActionResult, SwipeCandidate, SwipeHistoryItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
@@ -41,6 +41,11 @@ function actionFromDrag(deltaX: number, deltaY: number): SwipeAction | null {
   if (vertical > 90 && deltaY < 0 && vertical > horizontal * 0.8) return "want";
   if (horizontal > 100 && horizontal > vertical) return deltaX < 0 ? "seen" : "skip";
   return null;
+}
+
+function openTrailer(url: string | null) {
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export function SwipePage() {
@@ -225,6 +230,18 @@ export function SwipePage() {
                   <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-200">
                     {current.overview || "Keine Beschreibung vorhanden."}
                   </p>
+                  <button
+                    className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-slate-950 disabled:bg-slate-700 disabled:text-slate-400"
+                    disabled={!current.trailerUrl}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openTrailer(current.trailerUrl);
+                    }}
+                  >
+                    <Play className="h-4 w-4" aria-hidden="true" />
+                    {current.trailerUrl ? `Trailer ansehen${current.trailerSite ? ` (${current.trailerSite})` : ""}` : "Kein Trailer gefunden"}
+                  </button>
                 </div>
               </div>
               {previewAction && (

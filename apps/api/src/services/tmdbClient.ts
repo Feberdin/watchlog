@@ -46,6 +46,20 @@ type TmdbShowResult = {
   vote_count?: number;
 };
 
+type TmdbVideoResult = {
+  key?: string;
+  name?: string;
+  site?: string;
+  type?: string;
+  official?: boolean;
+  iso_639_1?: string;
+  published_at?: string;
+};
+
+type TmdbVideosResponse = {
+  results?: TmdbVideoResult[];
+};
+
 type TmdbMovieDetail = TmdbMovieResult & {
   runtime?: number | null;
   imdb_id?: string | null;
@@ -133,6 +147,8 @@ export type TmdbRecommendation = TmdbSearchResult & {
   recommendationBucket: TmdbRecommendationBucket;
   voteAverage: number | null;
   voteCount: number | null;
+  trailerUrl: string | null;
+  trailerSite: string | null;
 };
 
 function authHeaders(settings: TmdbSettingsForClient) {
@@ -241,6 +257,7 @@ function recommendationFromResult(
   type: "movie" | "show",
   bucket: TmdbRecommendationBucket,
   imageBaseUrl: string,
+  trailer: { url: string; site: string } | null = null,
 ): TmdbRecommendation {
   const normalized = type === "movie"
     ? movieToSearchResult(result as TmdbMovieResult, imageBaseUrl)
@@ -251,7 +268,57 @@ function recommendationFromResult(
     recommendationBucket: bucket,
     voteAverage: typeof result.vote_average === "number" ? result.vote_average : null,
     voteCount: typeof result.vote_count === "number" ? result.vote_count : null,
+    trailerUrl: trailer?.url ?? null,
+    trailerSite: trailer?.site ?? null,
   };
+}
+
+function youtubeTrailerUrl(video: TmdbVideoResult): string | null {
+  if (video.site !== "YouTube" || !video.key) {
+    return null;
+  }
+
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(video.key)}`;
+}
+
+function trailerScore(video: TmdbVideoResult, preferredLanguage: string, fallbackLanguage: string): number {
+  let score = 0;
+  if (video.type === "Trailer") score += 50;
+  if (video.official) score += 20;
+  if (video.site === "YouTube") score += 10;
+  if (video.iso_639_1 && preferredLanguage.toLowerCase().startsWith(video.iso_639_1.toLowerCase())) score += 8;
+  if (video.iso_639_1 && fallbackLanguage.toLowerCase().startsWith(video.iso_639_1.toLowerCase())) score += 4;
+  if (video.published_at) score += Math.min(new Date(video.published_at).getTime() / 1_000_000_000_000, 2);
+  return score;
+}
+
+function selectTrailer(videos: TmdbVideoResult[], settings: TmdbSettingsForClient): { url: string; site: string } | null {
+  const candidates = videos
+    .filter((video) => video.type === "Trailer" && youtubeTrailerUrl(video))
+    .sort((a, b) => trailerScore(b, settings.preferredLanguage, settings.fallbackLanguage) - trailerScore(a, settings.preferredLanguage, settings.fallbackLanguage));
+  const selected = candidates[0];
+  const url = selected ? youtubeTrailerUrl(selected) : null;
+  return selected && url ? { url, site: selected.site ?? "YouTube" } : null;
+}
+
+async function getTmdbTrailer(
+  settings: TmdbSettingsForClient,
+  type: "movie" | "show",
+  tmdbId: number,
+): Promise<{ url: string; site: string } | null> {
+  const path = type === "movie" ? `/movie/${tmdbId}/videos` : `/tv/${tmdbId}/videos`;
+  const response = await tmdbGet<TmdbVideosResponse>(path, settings, {
+    language: settings.preferredLanguage,
+  }).catch(() => null);
+  const preferredTrailer = response ? selectTrailer(response.results ?? [], settings) : null;
+  if (preferredTrailer) {
+    return preferredTrailer;
+  }
+
+  const fallbackResponse = settings.fallbackLanguage === settings.preferredLanguage
+    ? null
+    : await tmdbGet<TmdbVideosResponse>(path, settings, { language: settings.fallbackLanguage }).catch(() => null);
+  return fallbackResponse ? selectTrailer(fallbackResponse.results ?? [], settings) : null;
 }
 
 function isoDateOnly(value: Date): string {
@@ -356,11 +423,16 @@ export async function getTmdbSwipeRecommendations(settings: TmdbSettingsForClien
     recommendationPool(settings, "random", now),
   ]);
 
-  return [
+  const recommendations = [
     ...fresh.slice(0, 10),
     ...classics.slice(0, 10),
     ...random.slice(0, 10),
   ];
+  return Promise.all(recommendations.map(async (recommendation) => ({
+    ...recommendation,
+    ...(await getTmdbTrailer(settings, recommendation.type, recommendation.tmdbId)
+      .then((trailer) => ({ trailerUrl: trailer?.url ?? null, trailerSite: trailer?.site ?? null }))),
+  })));
 }
 
 export async function getTmdbDetails(settings: TmdbSettingsForClient, type: "movie" | "show", tmdbId: number): Promise<TmdbSearchResult & { runtimeSeconds: number | null; imdbId: string | null }> {

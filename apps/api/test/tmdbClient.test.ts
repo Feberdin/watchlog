@@ -96,6 +96,19 @@ describe("TMDb swipe recommendations", () => {
         })),
       }),
     } as Response);
+    const trailerResponse = {
+      ok: true,
+      json: async () => ({
+        results: [{
+          key: "abc123",
+          site: "YouTube",
+          type: "Trailer",
+          official: true,
+          iso_639_1: "de",
+          published_at: "2026-01-02T00:00:00.000Z",
+        }],
+      }),
+    } as Response;
 
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(responseFor("10"))
@@ -103,7 +116,8 @@ describe("TMDb swipe recommendations", () => {
       .mockResolvedValueOnce(responseFor("20"))
       .mockResolvedValueOnce(responseFor("21"))
       .mockResolvedValueOnce(responseFor("30"))
-      .mockResolvedValueOnce(responseFor("31"));
+      .mockResolvedValueOnce(responseFor("31"))
+      .mockResolvedValue(trailerResponse);
 
     const recommendations = await getTmdbSwipeRecommendations(settings, new Date("2026-05-25T00:00:00.000Z"));
 
@@ -111,6 +125,6 @@ describe("TMDb swipe recommendations", () => {
     expect(recommendations.filter((item) => item.recommendationBucket === "new")).toHaveLength(10);
     expect(recommendations.filter((item) => item.recommendationBucket === "classic")).toHaveLength(10);
     expect(recommendations.filter((item) => item.recommendationBucket === "random")).toHaveLength(10);
-    expect(recommendations[0]).toMatchObject({ voteAverage: 8.1, voteCount: 1200 });
+    expect(recommendations[0]).toMatchObject({ voteAverage: 8.1, voteCount: 1200, trailerUrl: "https://www.youtube.com/watch?v=abc123" });
   });
 });

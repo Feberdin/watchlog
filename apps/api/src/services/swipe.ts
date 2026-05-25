@@ -49,6 +49,8 @@ function toCandidate(media: Media, recommendation?: TmdbRecommendation): SwipeCa
     recommendationBucket: recommendation?.recommendationBucket ?? null,
     voteAverage: recommendation?.voteAverage ?? null,
     voteCount: recommendation?.voteCount ?? null,
+    trailerUrl: recommendation?.trailerUrl ?? null,
+    trailerSite: recommendation?.trailerSite ?? null,
   };
 }
 

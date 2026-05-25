@@ -142,6 +142,8 @@ export type SwipeCandidate = {
   recommendationBucket: "new" | "classic" | "random" | null;
   voteAverage: number | null;
   voteCount: number | null;
+  trailerUrl: string | null;
+  trailerSite: string | null;
 };
 
 export type SwipeActionResult = {
