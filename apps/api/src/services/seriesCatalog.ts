@@ -367,12 +367,15 @@ export async function syncJellyfinSeriesCatalogIfStale(prisma: PrismaClient, use
   return true;
 }
 
-export async function getSeriesCatalog(prisma: PrismaClient, userId: string): Promise<SeriesCatalogItem[]> {
+export async function getSeriesCatalog(prisma: PrismaClient, userId: string, options: { includeSpecials?: boolean } = {}): Promise<SeriesCatalogItem[]> {
   const shows = await prisma.media.findMany({
     where: { type: "show" },
     include: {
       children: {
-        where: { type: "episode" },
+        where: {
+          type: "episode",
+          ...(options.includeSpecials ? {} : { seasonNumber: { not: 0 } }),
+        },
         include: { watchEvents: { where: { userId }, orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }] } },
         orderBy: [{ seasonNumber: "asc" }, { episodeNumber: "asc" }, { title: "asc" }],
       },

@@ -12,7 +12,8 @@ import { getSeriesCatalog, markMediaWatched, syncJellyfinSeriesCatalog } from ".
 export const seriesRoutes: FastifyPluginAsync = async (app) => {
   app.get("/series", async (request) => {
     const user = request.requireUser();
-    return getSeriesCatalog(app.prisma, user.id);
+    const query = request.query as { includeSpecials?: string };
+    return getSeriesCatalog(app.prisma, user.id, { includeSpecials: query.includeSpecials === "true" });
   });
 
   app.post("/series/sync-jellyfin", async (request) => {

@@ -10,6 +10,8 @@ import { CheckCircle2, ChevronDown, ChevronRight, RefreshCw, Search, Tv } from "
 import type { SeriesCatalogItem, SeriesEpisode, SeriesSeason } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 
+const SHOW_SPECIALS_STORAGE_KEY = "watchlog.showSpecials";
+
 function episodeTitle(episode: SeriesEpisode) {
   const number = episode.episodeNumber != null ? `E${String(episode.episodeNumber).padStart(2, "0")}` : "E?";
   const year = episode.year ? ` (${episode.year})` : "";
@@ -29,11 +31,13 @@ export function SeriesPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [showSpecials, setShowSpecials] = useState(() => localStorage.getItem(SHOW_SPECIALS_STORAGE_KEY) === "true");
 
   async function loadSeries() {
     setLoading(true);
     try {
-      setSeries(await apiRequest<SeriesCatalogItem[]>("/api/series"));
+      const suffix = showSpecials ? "?includeSpecials=true" : "";
+      setSeries(await apiRequest<SeriesCatalogItem[]>(`/api/series${suffix}`));
     } finally {
       setLoading(false);
     }
@@ -41,7 +45,12 @@ export function SeriesPage() {
 
   useEffect(() => {
     void loadSeries().catch((caught) => setStatus(caught instanceof Error ? caught.message : "Serien konnten nicht geladen werden."));
-  }, []);
+  }, [showSpecials]);
+
+  function toggleSpecials(value: boolean) {
+    localStorage.setItem(SHOW_SPECIALS_STORAGE_KEY, String(value));
+    setShowSpecials(value);
+  }
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -114,6 +123,15 @@ export function SeriesPage() {
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             {syncing ? "Sync laeuft..." : "Serien synchronisieren"}
           </button>
+          <label className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200">
+            <input
+              className="h-4 w-4 accent-teal-400"
+              type="checkbox"
+              checked={showSpecials}
+              onChange={(event) => toggleSpecials(event.target.checked)}
+            />
+            Staffel 0 anzeigen
+          </label>
         </div>
       </div>
 
