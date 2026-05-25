@@ -1,0 +1,46 @@
+# Purpose: Broker-oriented Compose example for Unraid appdata bind mounts.
+# Input/Output: The Deployment Broker resolves secret:// values before starting the stack.
+# Invariants: Do not paste real secrets into git, chat, or issue reports.
+# Debugging: Use broker logs and verify `/mnt/user/appdata/watchlog` permissions.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: watchlog-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watchlog
+      POSTGRES_USER: watchlog
+      POSTGRES_PASSWORD: secret://WATCHLOG_POSTGRES_PASSWORD
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - /mnt/user/appdata/watchlog/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchlog -d watchlog"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  watchlog:
+    build: .
+    container_name: watchlog
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_URL: ${APP_URL:-http://tower.local:8111}
+      APP_PORT: 8111
+      TZ: ${TZ:-Europe/Berlin}
+      DATABASE_URL: secret://WATCHLOG_DATABASE_URL
+      SESSION_SECRET: secret://WATCHLOG_SESSION_SECRET
+      WEBHOOK_SECRET: secret://WATCHLOG_WEBHOOK_SECRET
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+    ports:
+      - "8111:8111"
+    volumes:
+      - /mnt/user/appdata/watchlog/config:/config
+      - /mnt/user/appdata/watchlog/cache:/cache

@@ -1,0 +1,6 @@
+# Purpose: Prisma migration provider lock file.
+# Input/Output: Prisma uses this to verify migrations target PostgreSQL.
+# Invariants: Production WatchLog deployments use PostgreSQL.
+# Debugging: If migrate deploy rejects the provider, check datasource provider in schema.prisma.
+
+provider = "postgresql"

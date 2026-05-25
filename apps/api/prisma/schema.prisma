@@ -1,0 +1,196 @@
+// Purpose: Prisma database schema for WatchLog.
+// Input/Output: Prisma reads this file to generate a type-safe client and database migrations.
+// Invariants: Rewatches are represented as multiple WatchEvent rows, never by overwriting history.
+// Debugging: Run `npm run db:push -w @watchlog/api` locally and inspect errors for invalid indexes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  user
+}
+
+enum MediaType {
+  movie
+  show
+  season
+  episode
+}
+
+enum WatchEventSource {
+  jellyfin
+  manual
+  import
+}
+
+enum DatePrecision {
+  exact
+  date
+  month
+  year
+  unknown
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  displayName   String
+  passwordHash  String
+  role          UserRole     @default(user)
+  jellyfinUserId String?     @unique
+  sessions      Session[]
+  watchEvents   WatchEvent[]
+  importJobs    ImportJob[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Settings {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  valueEncrypted String?
+  valueJson      Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Media {
+  id                   String           @id @default(cuid())
+  type                 MediaType
+  title                String
+  originalTitle        String?
+  sortTitle            String?
+  year                 Int?
+  overview             String?
+  runtimeSeconds       Int?
+  tmdbId               String?
+  imdbId               String?
+  tvdbId               String?
+  jellyfinItemId       String?          @unique
+  jellyfinSeriesId     String?
+  parentMediaId        String?
+  parent               Media?           @relation("MediaParent", fields: [parentMediaId], references: [id], onDelete: SetNull)
+  children             Media[]          @relation("MediaParent")
+  seasonNumber         Int?
+  episodeNumber        Int?
+  posterPath           String?
+  backdropPath         String?
+  posterUrl            String?
+  backdropUrl          String?
+  metadataSource       String?
+  metadataLastSyncedAt DateTime?
+  watchEvents          WatchEvent[]
+  playbackSessions     PlaybackSession[]
+  mappings             MediaMapping[]
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([jellyfinItemId])
+  @@index([tmdbId])
+  @@index([imdbId])
+  @@index([type, title])
+}
+
+model WatchEvent {
+  id                   String           @id @default(cuid())
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaId              String
+  media                Media            @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  source               WatchEventSource
+  watchedAt            DateTime?
+  datePrecision        DatePrecision
+  startedAt            DateTime?
+  stoppedAt            DateTime?
+  durationSeconds      Int?
+  progressPercent      Float?
+  completed            Boolean          @default(false)
+  rewatchIndex         Int              @default(1)
+  clientName           String?
+  deviceName           String?
+  jellyfinSessionId    String?
+  jellyfinPlaySessionId String?
+  note                 String?
+  rating               Float?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([userId, watchedAt])
+  @@index([mediaId, watchedAt])
+  @@index([source])
+}
+
+model PlaybackSession {
+  id                String   @id @default(cuid())
+  userId            String?
+  jellyfinUserId    String
+  jellyfinItemId    String
+  mediaId           String?
+  media             Media?   @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  playSessionId     String?
+  sessionId         String?
+  notificationType  String
+  startedAt         DateTime?
+  lastProgressAt    DateTime?
+  stoppedAt         DateTime?
+  progressPercent   Float?
+  completed         Boolean  @default(false)
+  clientName        String?
+  deviceName        String?
+  rawHash           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([jellyfinItemId, jellyfinUserId, playSessionId])
+  @@index([sessionId])
+}
+
+model ImportJob {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source       String
+  status       String
+  totalRows    Int       @default(0)
+  successRows  Int       @default(0)
+  failedRows   Int       @default(0)
+  errorSummary String?
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  @@index([userId, createdAt])
+}
+
+model MediaMapping {
+  id             String   @id @default(cuid())
+  mediaId        String
+  media          Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  source         String
+  externalId     String
+  confidence     Float?
+  verifiedByUser Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([mediaId])
+}

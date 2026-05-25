@@ -1,0 +1,48 @@
+{
+  "notification_type": "PlaybackStop",
+  "timestamp": "2026-05-25T12:00:00+02:00",
+  "utc_timestamp": "2026-05-25T10:00:00Z",
+  "server": {
+    "id": "example-server",
+    "name": "Jellyfin",
+    "version": "10.9.x",
+    "url": "http://jellyfin.local:8096"
+  },
+  "user": {
+    "id": "jf-user-1",
+    "name": "Example User"
+  },
+  "client": {
+    "name": "Jellyfin Web",
+    "device_name": "Firefox",
+    "device_id": "example-device",
+    "remote_endpoint": ""
+  },
+  "item": {
+    "id": "jf-item-heat-1995",
+    "type": "Movie",
+    "name": "Heat",
+    "overview": "",
+    "year": "1995",
+    "runtime_ticks": "102000000000",
+    "runtime": "02:50:00",
+    "media_source_id": "",
+    "tmdb_id": "949",
+    "imdb_id": "tt0113277",
+    "tvdb_id": "",
+    "series_name": "",
+    "series_id": "",
+    "season_number": "",
+    "episode_number": ""
+  },
+  "playback": {
+    "position_ticks": "102000000000",
+    "position": "02:50:00",
+    "play_method": "DirectPlay",
+    "played_to_completion": "true",
+    "is_paused": "false",
+    "played": "true",
+    "play_count": "1",
+    "last_played_date": "2026-05-25T10:00:00Z"
+  }
+}

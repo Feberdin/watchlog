@@ -1,0 +1,56 @@
+# Purpose: GitOps Docker Compose stack for WatchLog on Unraid through the Deployment Broker.
+# Input/Output: The broker resolves secret:// values and starts WatchLog plus PostgreSQL.
+# Invariants: No real secrets in git, no privileged containers, no host network, and no unsafe host mounts.
+# Debugging: Use broker logs/status first, then WatchLog `/api/health`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: watchlog-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watchlog
+      POSTGRES_USER: watchlog
+      POSTGRES_PASSWORD: secret://WATCHLOG_POSTGRES_PASSWORD
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - watchlog-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchlog -d watchlog"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  watchlog:
+    build: .
+    container_name: watchlog
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:8111}
+      APP_PORT: ${APP_PORT:-8111}
+      TZ: ${TZ:-Europe/Berlin}
+      DATABASE_URL: secret://WATCHLOG_DATABASE_URL
+      SESSION_SECRET: secret://WATCHLOG_SESSION_SECRET
+      WEBHOOK_SECRET: secret://WATCHLOG_WEBHOOK_SECRET
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+    ports:
+      - "${APP_PORT:-8111}:8111"
+    volumes:
+      - watchlog-config:/config
+      - watchlog-cache:/cache
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  watchlog-db:
+  watchlog-config:
+  watchlog-cache:

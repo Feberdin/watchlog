@@ -1,0 +1,20 @@
+# Purpose: Keep local build, dependency, secret, and runtime files out of git.
+# Input/Output: Git reads this file while deciding what to track.
+# Invariants: Never commit real .env files, database files, or generated node_modules.
+# Debugging: Run `git status --ignored` when a file is unexpectedly hidden.
+
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite
+*.sqlite-journal
+.DS_Store
+.vite/
+.turbo/
+apps/api/prisma/dev.db
+*.tsbuildinfo

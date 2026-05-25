@@ -1,0 +1,31 @@
+{
+  "name": "watchlog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted watch history logger for Jellyfin users.",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @watchlog/api & npm run dev -w @watchlog/web",
+    "build": "npm run build -w @watchlog/shared && npm run build -w @watchlog/web && npm run build -w @watchlog/api",
+    "typecheck": "npm run build -w @watchlog/shared && npm run typecheck -w @watchlog/api && npm run typecheck -w @watchlog/web",
+    "lint": "npm run lint -w @watchlog/shared && npm run lint -w @watchlog/api && npm run lint -w @watchlog/web",
+    "test": "npm run build -w @watchlog/shared && npm run test -w @watchlog/api && npm run test -w @watchlog/web && npm run test -w @watchlog/shared",
+    "prisma:generate": "npm run prisma:generate -w @watchlog/api",
+    "db:push": "npm run db:push -w @watchlog/api"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "eslint": "^9.6.0",
+    "typescript-eslint": "^8.0.0",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.5"
+  }
+}
