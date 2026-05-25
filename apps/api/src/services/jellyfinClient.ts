@@ -142,7 +142,7 @@ export async function getJellyfinItem(
 ): Promise<JellyfinWatchedItem | null> {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
   const url = new URL(`${normalizedBaseUrl}/Items/${encodeURIComponent(itemId)}`);
-  url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,ProductionYear,ImageTags");
+  url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
 
   return fetchJson<JellyfinWatchedItem>("Jellyfin", url.toString(), { headers: jellyfinHeaders(apiKey) });
 }

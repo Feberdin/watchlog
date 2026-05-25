@@ -37,9 +37,10 @@ function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
   const seriesMap = new Map<string, Extract<TimelineGroup, { kind: "series" }>>();
 
   for (const item of items) {
-    if (item.type === "episode" && item.seriesId) {
+    const fallbackSeriesId = item.seriesId ?? (item.type === "episode" && item.seriesTitle ? `series-title:${item.seriesTitle}` : null);
+    if (item.type === "episode" && fallbackSeriesId) {
       const seriesTitle = item.seriesTitle ?? "Unbekannte Serie";
-      const existing = seriesMap.get(item.seriesId);
+      const existing = seriesMap.get(fallbackSeriesId);
       if (existing) {
         existing.episodes.push(item);
         existing.watchedEpisodes += 1;
@@ -52,7 +53,7 @@ function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
       } else {
         const group: Extract<TimelineGroup, { kind: "series" }> = {
           kind: "series",
-          seriesId: item.seriesId,
+          seriesId: fallbackSeriesId,
           seriesTitle,
           posterUrl: item.seriesPosterUrl ?? item.posterUrl,
           watchedEpisodes: 1,
@@ -61,7 +62,7 @@ function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
           lastWatchedAt: item.watchedAt,
           episodes: [item],
         };
-        seriesMap.set(item.seriesId, group);
+        seriesMap.set(fallbackSeriesId, group);
         groups.push(group);
       }
       continue;

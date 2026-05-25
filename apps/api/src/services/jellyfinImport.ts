@@ -80,19 +80,28 @@ async function importOneWatchedItem(
     return "skipped";
   }
 
+  const itemDetails = mediaType === "episode" && (!item.SeriesId || !item.SeriesName)
+    ? await getJellyfinItem(baseUrl, apiKey, item.Id).catch(() => null)
+    : null;
+  const seriesId = item.SeriesId ?? itemDetails?.SeriesId ?? null;
+  const seriesName = item.SeriesName ?? itemDetails?.SeriesName ?? null;
+  const seasonNumber = item.ParentIndexNumber ?? itemDetails?.ParentIndexNumber ?? null;
+  const episodeNumber = item.IndexNumber ?? itemDetails?.IndexNumber ?? null;
+  const posterUrl = jellyfinPrimaryImageUrl(baseUrl, item) ?? (itemDetails ? jellyfinPrimaryImageUrl(baseUrl, itemDetails) : null);
+
   let parentMediaId: string | null = null;
   let seriesTitle: string | null = null;
-  if (mediaType === "episode" && item.SeriesId) {
-    const cachedSeries = seriesCache.get(item.SeriesId);
+  if (mediaType === "episode" && seriesId) {
+    const cachedSeries = seriesCache.get(seriesId);
     let series = cachedSeries;
     if (!series) {
-      const seriesItem = await getJellyfinItem(baseUrl, apiKey, item.SeriesId).catch(() => null);
+      const seriesItem = await getJellyfinItem(baseUrl, apiKey, seriesId).catch(() => null);
       series = {
-        id: item.SeriesId,
-        title: seriesItem?.Name ?? item.SeriesName ?? "Unbekannte Serie",
+        id: seriesId,
+        title: seriesItem?.Name ?? seriesName ?? "Unbekannte Serie",
         posterUrl: seriesItem ? jellyfinPrimaryImageUrl(baseUrl, seriesItem) : null,
       };
-      seriesCache.set(item.SeriesId, series);
+      seriesCache.set(seriesId, series);
     }
 
     seriesTitle = series.title;
@@ -128,12 +137,12 @@ async function importOneWatchedItem(
       tmdbId: providerId(item, "Tmdb"),
       imdbId: providerId(item, "Imdb"),
       tvdbId: providerId(item, "Tvdb"),
-      jellyfinSeriesId: item.SeriesId ?? null,
+      jellyfinSeriesId: seriesId,
       originalTitle: seriesTitle,
       parentMediaId,
-      seasonNumber: item.ParentIndexNumber ?? null,
-      episodeNumber: item.IndexNumber ?? null,
-      posterUrl: jellyfinPrimaryImageUrl(baseUrl, item),
+      seasonNumber,
+      episodeNumber,
+      posterUrl,
       metadataSource: "jellyfin",
       metadataLastSyncedAt: new Date(),
     },
@@ -147,12 +156,12 @@ async function importOneWatchedItem(
       imdbId: providerId(item, "Imdb"),
       tvdbId: providerId(item, "Tvdb"),
       jellyfinItemId: item.Id,
-      jellyfinSeriesId: item.SeriesId ?? null,
+      jellyfinSeriesId: seriesId,
       originalTitle: seriesTitle,
       parentMediaId,
-      seasonNumber: item.ParentIndexNumber ?? null,
-      episodeNumber: item.IndexNumber ?? null,
-      posterUrl: jellyfinPrimaryImageUrl(baseUrl, item),
+      seasonNumber,
+      episodeNumber,
+      posterUrl,
       metadataSource: "jellyfin",
       metadataLastSyncedAt: new Date(),
     },
