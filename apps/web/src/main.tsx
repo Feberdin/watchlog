@@ -49,7 +49,7 @@ function App() {
       {active === "dashboard" && <DashboardPage />}
       {active === "timeline" && <TimelinePage />}
       {active === "manual" && <ManualAddPage />}
-      {active === "integrations" && <IntegrationsPage />}
+      {active === "integrations" && <IntegrationsPage user={user} onUserUpdated={setUser} />}
     </Layout>
   );
 }

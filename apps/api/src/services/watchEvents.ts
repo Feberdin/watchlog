@@ -31,7 +31,7 @@ function shouldCreateWatchEvent(event: NormalizedJellyfinWebhook, options: Watch
   return event.progressPercent != null && event.progressPercent >= thresholdFor(event, options);
 }
 
-async function nextRewatchIndex(prisma: PrismaClient, userId: string, mediaId: string): Promise<number> {
+export async function nextRewatchIndex(prisma: PrismaClient, userId: string, mediaId: string): Promise<number> {
   const latest = await prisma.watchEvent.findFirst({
     where: { userId, mediaId },
     orderBy: { rewatchIndex: "desc" },

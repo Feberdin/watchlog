@@ -8,7 +8,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import argon2 from "argon2";
-import { loginSchema, registerSchema, SESSION_COOKIE_NAME } from "@watchlog/shared";
+import { loginSchema, registerSchema, SESSION_COOKIE_NAME, updateProfileSchema } from "@watchlog/shared";
 import { sha256 } from "../utils/crypto.js";
 
 export const authRoutes: FastifyPluginAsync<{ registrationEnabled: boolean }> = async (app, options) => {
@@ -96,6 +96,38 @@ export const authRoutes: FastifyPluginAsync<{ registrationEnabled: boolean }> = 
       displayName: user.displayName,
       role: user.role,
       jellyfinUserId: user.jellyfinUserId,
+    };
+  });
+
+  app.put("/auth/me", async (request) => {
+    const user = request.requireUser();
+    const input = updateProfileSchema.parse(request.body);
+    if (input.jellyfinUserId) {
+      const existing = await app.prisma.user.findFirst({
+        where: {
+          jellyfinUserId: input.jellyfinUserId,
+          id: { not: user.id },
+        },
+      });
+      if (existing) {
+        throw app.httpErrors.badRequest("Diese Jellyfin-UserId ist bereits einem anderen WatchLog-Benutzer zugeordnet.");
+      }
+    }
+
+    const updated = await app.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        displayName: input.displayName ?? user.displayName,
+        jellyfinUserId: input.jellyfinUserId ?? null,
+      },
+    });
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      displayName: updated.displayName,
+      role: updated.role,
+      jellyfinUserId: updated.jellyfinUserId,
     };
   });
 };

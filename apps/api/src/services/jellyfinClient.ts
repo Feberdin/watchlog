@@ -18,6 +18,31 @@ type JellyfinUser = {
   Name?: string;
 };
 
+type JellyfinItemsResponse = {
+  Items?: JellyfinWatchedItem[];
+  TotalRecordCount?: number;
+};
+
+export type JellyfinWatchedItem = {
+  Id?: string;
+  Name?: string;
+  Type?: string;
+  ProductionYear?: number;
+  Overview?: string;
+  RunTimeTicks?: number;
+  ProviderIds?: Record<string, string | undefined>;
+  SeriesId?: string;
+  SeriesName?: string;
+  ParentIndexNumber?: number;
+  IndexNumber?: number;
+  ImageTags?: Record<string, string | undefined>;
+  UserData?: {
+    Played?: boolean;
+    LastPlayedDate?: string;
+    PlayCount?: number;
+  };
+};
+
 export type JellyfinConnectionResult = {
   serverName: string | null;
   version: string | null;
@@ -43,4 +68,63 @@ export async function testJellyfinConnection(baseUrl: string, apiKey: string | n
       .filter((user): user is { Id: string; Name: string } => Boolean(user.Id && user.Name))
       .map((user) => ({ id: user.Id, name: user.Name })),
   };
+}
+
+function jellyfinHeaders(apiKey: string | null | undefined): Record<string, string> {
+  if (!apiKey) {
+    throw new Error("Jellyfin: API-Key fehlt. Bitte in den Integrationen speichern.");
+  }
+
+  return { "X-Emby-Token": apiKey };
+}
+
+export function ticksToSeconds(ticks: number | null | undefined): number | null {
+  if (typeof ticks !== "number" || !Number.isFinite(ticks) || ticks <= 0) {
+    return null;
+  }
+
+  return Math.round(ticks / 10_000_000);
+}
+
+export function jellyfinPrimaryImageUrl(baseUrl: string, item: JellyfinWatchedItem): string | null {
+  if (!item.Id || !item.ImageTags?.Primary) {
+    return null;
+  }
+
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
+  return `${normalizedBaseUrl}/Items/${encodeURIComponent(item.Id)}/Images/Primary?tag=${encodeURIComponent(item.ImageTags.Primary)}`;
+}
+
+export async function listWatchedJellyfinItems(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  jellyfinUserId: string,
+): Promise<JellyfinWatchedItem[]> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
+  const headers = jellyfinHeaders(apiKey);
+  const limit = 200;
+  const items: JellyfinWatchedItem[] = [];
+
+  for (let startIndex = 0; startIndex < 10_000; startIndex += limit) {
+    const url = new URL(`${normalizedBaseUrl}/Users/${encodeURIComponent(jellyfinUserId)}/Items`);
+    url.searchParams.set("Recursive", "true");
+    url.searchParams.set("IncludeItemTypes", "Movie,Episode");
+    url.searchParams.set("Filters", "IsPlayed");
+    url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
+    url.searchParams.set("SortBy", "DatePlayed");
+    url.searchParams.set("SortOrder", "Descending");
+    url.searchParams.set("StartIndex", String(startIndex));
+    url.searchParams.set("Limit", String(limit));
+
+    const response = await fetchJson<JellyfinItemsResponse>("Jellyfin", url.toString(), { headers });
+    const page = response.Items ?? [];
+    items.push(...page);
+
+    const total = response.TotalRecordCount ?? items.length;
+    if (page.length < limit || items.length >= total) {
+      break;
+    }
+  }
+
+  return items;
 }

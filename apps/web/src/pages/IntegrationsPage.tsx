@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
-import type { IntegrationTestResponse, TmdbSearchResult } from "@watchlog/shared";
+import type { AuthUser, IntegrationTestResponse, JellyfinWatchedImportResult, TmdbSearchResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 
 type JellyfinSettings = {
@@ -36,7 +36,12 @@ function secretInputValue(value: string | null | undefined) {
   return value === masked ? "" : value ?? "";
 }
 
-export function IntegrationsPage() {
+type IntegrationsPageProps = {
+  user: AuthUser;
+  onUserUpdated: (user: AuthUser) => void;
+};
+
+export function IntegrationsPage({ user, onUserUpdated }: IntegrationsPageProps) {
   const [jellyfin, setJellyfin] = useState<JellyfinSettings | null>(null);
   const [tmdb, setTmdb] = useState<TmdbSettings | null>(null);
   const [jellyseerr, setJellyseerr] = useState<JellyseerrSettings | null>(null);
@@ -45,6 +50,8 @@ export function IntegrationsPage() {
   const [type, setType] = useState<"movie" | "show">("movie");
   const [year, setYear] = useState("");
   const [results, setResults] = useState<TmdbSearchResult[]>([]);
+  const [jellyfinUserId, setJellyfinUserId] = useState(user.jellyfinUserId ?? "");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     void Promise.all([
@@ -87,6 +94,29 @@ export function IntegrationsPage() {
   async function test(path: string) {
     const response = await apiRequest<IntegrationTestResponse>(path, { method: "POST", body: "{}" });
     setStatus(response.message);
+  }
+
+  async function saveProfileMapping() {
+    const updated = await apiRequest<AuthUser>("/api/auth/me", {
+      method: "PUT",
+      body: JSON.stringify({ displayName: user.displayName, jellyfinUserId }),
+    });
+    onUserUpdated(updated);
+    setJellyfinUserId(updated.jellyfinUserId ?? "");
+    setStatus("Jellyfin-UserId fuer deinen WatchLog-Benutzer gespeichert.");
+  }
+
+  async function importWatchedFromJellyfin() {
+    setImporting(true);
+    try {
+      const response = await apiRequest<JellyfinWatchedImportResult>("/api/import/jellyfin/watched", {
+        method: "POST",
+        body: "{}",
+      });
+      setStatus(response.message);
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function searchTmdb() {
@@ -175,6 +205,35 @@ export function IntegrationsPage() {
           </div>
         </form>
       </div>
+
+      <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <h2 className="text-lg font-semibold">Jellyfin-Watchstate importieren</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          Importiert Filme und Episoden, die Jellyfin fuer deinen Benutzer als gesehen markiert. Jellyfin liefert dabei normalerweise den aktuellen Gesehen-Status und das letzte Gesehen-Datum, aber keine vollstaendige alte Rewatch-Historie.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+          <label className="block text-sm">
+            Deine Jellyfin-UserId
+            <input
+              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2"
+              value={jellyfinUserId}
+              onChange={(event) => setJellyfinUserId(event.target.value)}
+              placeholder="Jellyfin UserId aus dem Jellyfin-Test oder Webhook"
+            />
+          </label>
+          <button type="button" className="self-end rounded-md bg-slate-800 px-3 py-2 text-sm" onClick={() => void saveProfileMapping()}>
+            UserId speichern
+          </button>
+          <button
+            type="button"
+            disabled={importing}
+            className="self-end rounded-md bg-teal-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => void importWatchedFromJellyfin()}
+          >
+            {importing ? "Import laeuft..." : "Gesehene Medien importieren"}
+          </button>
+        </div>
+      </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
         <h2 className="text-lg font-semibold">TMDb-Suche</h2>

@@ -59,3 +59,15 @@ export type TmdbSearchResult = {
   posterUrl: string | null;
   backdropUrl: string | null;
 };
+
+export type JellyfinWatchedImportResult = {
+  ok: true;
+  source: "jellyfin";
+  userId: string;
+  jellyfinUserId: string;
+  totalItems: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  message: string;
+};

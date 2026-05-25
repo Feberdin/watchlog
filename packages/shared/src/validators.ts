@@ -37,6 +37,11 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const updateProfileSchema = z.object({
+  displayName: z.string().trim().min(1).max(120).optional(),
+  jellyfinUserId: nullableTrimmedString,
+});
+
 export const manualMediaSchema = z.object({
   type: mediaTypeSchema,
   title: z.string().trim().min(1).max(300),
@@ -95,6 +100,7 @@ export const tmdbImportSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ManualMediaInput = z.infer<typeof manualMediaSchema>;
 export type ManualWatchEventInput = z.infer<typeof manualWatchEventSchema>;
 export type JellyfinSettingsInput = z.infer<typeof jellyfinSettingsSchema>;

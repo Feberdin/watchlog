@@ -15,6 +15,7 @@ Debugging: Start with `/api/health`, then container logs, then database rows.
 - Duplicate suppression for repeated PlaybackStop events within 30 minutes.
 - Rewatch support through separate WatchEvent rows.
 - React/Vite UI with Login/Setup, Dashboard, Timeline, and manual historical entries.
+- Explicit Jellyfin watched-state import for movies and episodes mapped to the current WatchLog user.
 - Docker Compose and Unraid example.
 
 ## Quickstart
@@ -128,10 +129,17 @@ curl -i \
   --data-binary @docs/example-playbackstop-webhook.json
 ```
 
+## Jellyfin Watched Import
+
+Jellyfin can provide the current watched state for a user, including movies and episodes marked as played. In WatchLog, open `Integrationen`, save your Jellyfin UserId, then click `Gesehene Medien importieren`.
+
+Important limitation: Jellyfin usually exposes the current played state and the latest played date, not a complete historical rewatch list. Future WatchLog webhooks will capture rewatches as separate events.
+
 ## Troubleshooting
 
 - `401 Webhook-Secret ist ungueltig`: header or query secret does not match `WEBHOOK_SECRET`.
 - `Kein WatchLog-Benutzer fuer Jellyfin-UserId gefunden`: add the Jellyfin user ID to the WatchLog account.
+- `Dein WatchLog-Benutzer hat keine Jellyfin-UserId`: open `Integrationen`, copy the matching Jellyfin user ID from your Jellyfin admin/user list, save it, and retry the import.
 - `db: error` in `/api/health`: check `WATCHLOG_DATABASE_URL`, `WATCHLOG_POSTGRES_PASSWORD`, and database container logs through the broker.
 - Login loops: verify `APP_URL`, reverse proxy HTTPS settings, and `SECURE_COOKIES`.
 

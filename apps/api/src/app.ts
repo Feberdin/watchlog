@@ -29,6 +29,7 @@ import { watchEventRoutes } from "./routes/watchEvents.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { exportRoutes } from "./routes/export.js";
+import { importRoutes } from "./routes/import.js";
 import { metadataRoutes } from "./routes/metadata.js";
 import { seedIntegrationSettingsFromEnv } from "./services/envSettings.js";
 
@@ -119,6 +120,7 @@ export async function buildApp(env: AppEnv) {
     await api.register(dashboardRoutes);
     await api.register(settingsRoutes);
     await api.register(exportRoutes);
+    await api.register(importRoutes);
     await api.register(metadataRoutes);
   }, { prefix: "/api" });
 
