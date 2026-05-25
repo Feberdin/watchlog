@@ -14,7 +14,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     const user = request.requireUser();
     const rows = await app.prisma.watchEvent.findMany({
       where: { userId: user.id },
-      include: { media: true },
+      include: { media: { include: { parent: true } } },
       orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
       take: 300,
     });
@@ -31,6 +31,11 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       source: row.source,
       rewatchIndex: row.rewatchIndex,
       note: row.note,
+      seriesId: row.media.parent?.id ?? row.media.jellyfinSeriesId ?? null,
+      seriesTitle: row.media.parent?.title ?? row.media.originalTitle ?? null,
+      seriesPosterUrl: row.media.parent?.posterUrl ?? null,
+      seasonNumber: row.media.seasonNumber,
+      episodeNumber: row.media.episodeNumber,
     }));
   });
 

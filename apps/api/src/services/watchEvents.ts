@@ -108,6 +108,25 @@ export async function handleJellyfinWebhookEvent(
     },
   });
 
+  let parentMediaId: string | null = null;
+  if (event.itemType === "Episode" && event.seriesId) {
+    const parent = await prisma.media.upsert({
+      where: { jellyfinItemId: event.seriesId },
+      update: {
+        title: event.seriesName ?? "Unbekannte Serie",
+        metadataSource: "jellyfin",
+      },
+      create: {
+        type: "show",
+        title: event.seriesName ?? "Unbekannte Serie",
+        jellyfinItemId: event.seriesId,
+        metadataSource: "jellyfin",
+      },
+    });
+    parentMediaId = parent.id;
+    await appLikeUpdateEpisodeParent(prisma, media.id, parentMediaId, event.seriesName);
+  }
+
   await prisma.playbackSession.create({
     data: {
       userId: user.id,
@@ -168,6 +187,21 @@ export async function handleJellyfinWebhookEvent(
   });
 
   return { created: true, watchEvent };
+}
+
+async function appLikeUpdateEpisodeParent(
+  prisma: PrismaClient,
+  mediaId: string,
+  parentMediaId: string | null,
+  seriesTitle: string | null,
+) {
+  await prisma.media.update({
+    where: { id: mediaId },
+    data: {
+      parentMediaId,
+      originalTitle: seriesTitle,
+    },
+  });
 }
 
 export async function createManualWatchEvent(

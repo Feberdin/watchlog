@@ -134,3 +134,15 @@ export async function listWatchedJellyfinItems(
 
   return items;
 }
+
+export async function getJellyfinItem(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  itemId: string,
+): Promise<JellyfinWatchedItem | null> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
+  const url = new URL(`${normalizedBaseUrl}/Items/${encodeURIComponent(itemId)}`);
+  url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,ProductionYear,ImageTags");
+
+  return fetchJson<JellyfinWatchedItem>("Jellyfin", url.toString(), { headers: jellyfinHeaders(apiKey) });
+}

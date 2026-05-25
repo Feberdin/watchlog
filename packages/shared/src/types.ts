@@ -38,7 +38,32 @@ export type TimelineItem = {
   source: WatchEventSource;
   rewatchIndex: number;
   note: string | null;
+  seriesId: string | null;
+  seriesTitle: string | null;
+  seriesPosterUrl: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
 };
+
+export type TimelineMovieGroup = {
+  kind: "movie";
+  sortDate: string | null;
+  item: TimelineItem;
+};
+
+export type TimelineSeriesGroup = {
+  kind: "series";
+  seriesId: string;
+  seriesTitle: string;
+  posterUrl: string | null;
+  watchedEpisodes: number;
+  totalEpisodes: number | null;
+  isComplete: boolean | null;
+  lastWatchedAt: string | null;
+  episodes: TimelineItem[];
+};
+
+export type TimelineGroup = TimelineMovieGroup | TimelineSeriesGroup;
 
 export type IntegrationTestResponse = {
   ok: boolean;

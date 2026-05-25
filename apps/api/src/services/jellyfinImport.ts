@@ -8,6 +8,7 @@
 import type { PrismaClient, User } from "@prisma/client";
 import type { JellyfinWatchedImportResult } from "@watchlog/shared";
 import {
+  getJellyfinItem,
   jellyfinPrimaryImageUrl,
   listJellyfinUsers,
   listWatchedJellyfinItems,
@@ -32,6 +33,8 @@ type ImportCounters = {
   skipped: number;
   failed: number;
 };
+
+type SeriesCache = Map<string, { id: string; title: string; posterUrl: string | null }>;
 
 function providerId(item: JellyfinWatchedItem, key: string): string | null {
   const value = item.ProviderIds?.[key] ?? item.ProviderIds?.[key.toLowerCase()] ?? item.ProviderIds?.[key.toUpperCase()];
@@ -68,11 +71,49 @@ async function importOneWatchedItem(
   prisma: PrismaClient,
   user: User,
   baseUrl: string,
+  apiKey: string | null | undefined,
   item: JellyfinWatchedItem,
+  seriesCache: SeriesCache,
 ): Promise<"imported" | "skipped" | "failed"> {
   const mediaType = mediaTypeFromJellyfin(item);
   if (!item.Id || !item.Name || !mediaType || item.UserData?.Played !== true) {
     return "skipped";
+  }
+
+  let parentMediaId: string | null = null;
+  let seriesTitle: string | null = null;
+  if (mediaType === "episode" && item.SeriesId) {
+    const cachedSeries = seriesCache.get(item.SeriesId);
+    let series = cachedSeries;
+    if (!series) {
+      const seriesItem = await getJellyfinItem(baseUrl, apiKey, item.SeriesId).catch(() => null);
+      series = {
+        id: item.SeriesId,
+        title: seriesItem?.Name ?? item.SeriesName ?? "Unbekannte Serie",
+        posterUrl: seriesItem ? jellyfinPrimaryImageUrl(baseUrl, seriesItem) : null,
+      };
+      seriesCache.set(item.SeriesId, series);
+    }
+
+    seriesTitle = series.title;
+    const parent = await prisma.media.upsert({
+      where: { jellyfinItemId: series.id },
+      update: {
+        title: series.title,
+        posterUrl: series.posterUrl,
+        metadataSource: "jellyfin",
+        metadataLastSyncedAt: new Date(),
+      },
+      create: {
+        type: "show",
+        title: series.title,
+        jellyfinItemId: series.id,
+        posterUrl: series.posterUrl,
+        metadataSource: "jellyfin",
+        metadataLastSyncedAt: new Date(),
+      },
+    });
+    parentMediaId = parent.id;
   }
 
   const watchedAt = parseLastPlayedDate(item);
@@ -88,6 +129,8 @@ async function importOneWatchedItem(
       imdbId: providerId(item, "Imdb"),
       tvdbId: providerId(item, "Tvdb"),
       jellyfinSeriesId: item.SeriesId ?? null,
+      originalTitle: seriesTitle,
+      parentMediaId,
       seasonNumber: item.ParentIndexNumber ?? null,
       episodeNumber: item.IndexNumber ?? null,
       posterUrl: jellyfinPrimaryImageUrl(baseUrl, item),
@@ -105,6 +148,8 @@ async function importOneWatchedItem(
       tvdbId: providerId(item, "Tvdb"),
       jellyfinItemId: item.Id,
       jellyfinSeriesId: item.SeriesId ?? null,
+      originalTitle: seriesTitle,
+      parentMediaId,
       seasonNumber: item.ParentIndexNumber ?? null,
       episodeNumber: item.IndexNumber ?? null,
       posterUrl: jellyfinPrimaryImageUrl(baseUrl, item),
@@ -188,6 +233,7 @@ export async function importWatchedFromJellyfin(prisma: PrismaClient, user: User
 
   const items = await listWatchedJellyfinItems(settings.jellyfinBaseUrl, settings.jellyfinApiKey, resolvedUser.id);
   const counters: ImportCounters = { totalItems: items.length, imported: 0, skipped: 0, failed: 0 };
+  const seriesCache: SeriesCache = new Map();
 
   const job = await prisma.importJob.create({
     data: {
@@ -200,7 +246,7 @@ export async function importWatchedFromJellyfin(prisma: PrismaClient, user: User
 
   for (const item of items) {
     try {
-      const result = await importOneWatchedItem(prisma, user, settings.jellyfinBaseUrl, item);
+      const result = await importOneWatchedItem(prisma, user, settings.jellyfinBaseUrl, settings.jellyfinApiKey, item, seriesCache);
       counters[result] += 1;
     } catch {
       counters.failed += 1;
