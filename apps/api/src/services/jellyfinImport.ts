@@ -9,6 +9,7 @@ import type { PrismaClient, User } from "@prisma/client";
 import type { JellyfinWatchedImportResult } from "@watchlog/shared";
 import {
   jellyfinPrimaryImageUrl,
+  listJellyfinUsers,
   listWatchedJellyfinItems,
   ticksToSeconds,
   type JellyfinWatchedItem,
@@ -142,6 +143,31 @@ async function importOneWatchedItem(
   return "imported";
 }
 
+async function resolveJellyfinUserId(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  savedUserValue: string,
+): Promise<{ id: string; wasNameMatch: boolean }> {
+  const users = await listJellyfinUsers(baseUrl, apiKey);
+  const normalized = savedUserValue.trim().toLowerCase();
+  const byId = users.find((candidate) => candidate.id.toLowerCase() === normalized);
+  if (byId) {
+    return { id: byId.id, wasNameMatch: false };
+  }
+
+  const byName = users.filter((candidate) => candidate.name.toLowerCase() === normalized);
+  const uniqueNameMatch = byName[0];
+  if (byName.length === 1 && uniqueNameMatch) {
+    return { id: uniqueNameMatch.id, wasNameMatch: true };
+  }
+
+  if (byName.length > 1) {
+    throw new Error(`Jellyfin-Benutzername "${savedUserValue}" ist nicht eindeutig. Waehle bitte die konkrete Jellyfin-UserId aus.`);
+  }
+
+  throw new Error(`Jellyfin-Benutzer "${savedUserValue}" wurde nicht gefunden. Waehle unter Integrationen einen Benutzer aus der Jellyfin-Liste.`);
+}
+
 export async function importWatchedFromJellyfin(prisma: PrismaClient, user: User): Promise<JellyfinWatchedImportResult> {
   if (!user.jellyfinUserId) {
     throw new Error("Dein WatchLog-Benutzer hat keine Jellyfin-UserId. Trage sie unter Integrationen ein und starte den Import erneut.");
@@ -152,7 +178,15 @@ export async function importWatchedFromJellyfin(prisma: PrismaClient, user: User
     throw new Error("Jellyfin URL fehlt. Bitte zuerst die Broker-Secrets oder Integrationseinstellungen pruefen.");
   }
 
-  const items = await listWatchedJellyfinItems(settings.jellyfinBaseUrl, settings.jellyfinApiKey, user.jellyfinUserId);
+  const resolvedUser = await resolveJellyfinUserId(settings.jellyfinBaseUrl, settings.jellyfinApiKey, user.jellyfinUserId);
+  if (resolvedUser.wasNameMatch) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { jellyfinUserId: resolvedUser.id },
+    });
+  }
+
+  const items = await listWatchedJellyfinItems(settings.jellyfinBaseUrl, settings.jellyfinApiKey, resolvedUser.id);
   const counters: ImportCounters = { totalItems: items.length, imported: 0, skipped: 0, failed: 0 };
 
   const job = await prisma.importJob.create({
@@ -188,7 +222,7 @@ export async function importWatchedFromJellyfin(prisma: PrismaClient, user: User
     ok: true,
     source: "jellyfin",
     userId: user.id,
-    jellyfinUserId: user.jellyfinUserId,
+    jellyfinUserId: resolvedUser.id,
     ...counters,
     message: `${counters.imported} gesehen(e) Jellyfin-Eintraege importiert, ${counters.skipped} uebersprungen, ${counters.failed} fehlgeschlagen.`,
   };

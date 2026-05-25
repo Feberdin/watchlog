@@ -9,7 +9,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { jellyfinSettingsSchema, jellyseerrSettingsSchema, tmdbSettingsSchema } from "@watchlog/shared";
 import type { IntegrationTestResponse } from "@watchlog/shared";
 import { getSetting, maskSettings, saveSetting } from "../services/settings.js";
-import { testJellyfinConnection } from "../services/jellyfinClient.js";
+import { listJellyfinUsers, testJellyfinConnection } from "../services/jellyfinClient.js";
 import { testJellyseerrConnection } from "../services/jellyseerrClient.js";
 import { testTmdbConnection, type TmdbSettingsForClient } from "../services/tmdbClient.js";
 
@@ -79,6 +79,16 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
         users: result.users.length,
       },
     };
+  });
+
+  app.get("/settings/jellyfin/users", async (request) => {
+    request.requireUser();
+    const settings = await getSetting(app.prisma, "jellyfin", jellyfinDefaults);
+    if (!settings.jellyfinBaseUrl) {
+      throw app.httpErrors.badRequest("Jellyfin URL fehlt. Bitte erst Einstellungen speichern.");
+    }
+
+    return listJellyfinUsers(settings.jellyfinBaseUrl, settings.jellyfinApiKey);
   });
 
   app.get("/settings/tmdb", async (request) => {

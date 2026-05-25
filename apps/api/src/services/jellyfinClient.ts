@@ -50,6 +50,14 @@ export type JellyfinConnectionResult = {
   users: Array<{ id: string; name: string }>;
 };
 
+export async function listJellyfinUsers(baseUrl: string, apiKey: string | null | undefined): Promise<Array<{ id: string; name: string }>> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
+  const users = await fetchJson<JellyfinUser[]>("Jellyfin", `${normalizedBaseUrl}/Users`, { headers: jellyfinHeaders(apiKey) });
+  return users
+    .filter((user): user is { Id: string; Name: string } => Boolean(user.Id && user.Name))
+    .map((user) => ({ id: user.Id, name: user.Name }));
+}
+
 export async function testJellyfinConnection(baseUrl: string, apiKey: string | null | undefined): Promise<JellyfinConnectionResult> {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
   if (!apiKey) {
@@ -58,15 +66,13 @@ export async function testJellyfinConnection(baseUrl: string, apiKey: string | n
 
   const headers = { "X-Emby-Token": apiKey };
   const info = await fetchJson<JellyfinSystemInfo>("Jellyfin", `${normalizedBaseUrl}/System/Info`, { headers });
-  const users = await fetchJson<JellyfinUser[]>("Jellyfin", `${normalizedBaseUrl}/Users`, { headers });
+  const users = await listJellyfinUsers(baseUrl, apiKey);
 
   return {
     serverName: info.ServerName ?? null,
     version: info.Version ?? null,
     id: info.Id ?? null,
-    users: users
-      .filter((user): user is { Id: string; Name: string } => Boolean(user.Id && user.Name))
-      .map((user) => ({ id: user.Id, name: user.Name })),
+    users,
   };
 }
 

@@ -103,7 +103,13 @@ export async function buildApp(env: AppEnv) {
       return;
     }
 
-    request.log.error({ error }, "Request failed");
+    request.log.error({
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      },
+    }, "Request failed");
     const statusCode = "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
     reply.status(statusCode).send({
       error: error.name,

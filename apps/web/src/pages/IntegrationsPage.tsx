@@ -30,6 +30,11 @@ type JellyseerrSettings = {
   jellyseerrApiKey: string | null;
 };
 
+type JellyfinUserOption = {
+  id: string;
+  name: string;
+};
+
 const masked = "********";
 
 function secretInputValue(value: string | null | undefined) {
@@ -51,6 +56,7 @@ export function IntegrationsPage({ user, onUserUpdated }: IntegrationsPageProps)
   const [year, setYear] = useState("");
   const [results, setResults] = useState<TmdbSearchResult[]>([]);
   const [jellyfinUserId, setJellyfinUserId] = useState(user.jellyfinUserId ?? "");
+  const [jellyfinUsers, setJellyfinUsers] = useState<JellyfinUserOption[]>([]);
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
@@ -94,6 +100,12 @@ export function IntegrationsPage({ user, onUserUpdated }: IntegrationsPageProps)
   async function test(path: string) {
     const response = await apiRequest<IntegrationTestResponse>(path, { method: "POST", body: "{}" });
     setStatus(response.message);
+  }
+
+  async function loadJellyfinUsers() {
+    const users = await apiRequest<JellyfinUserOption[]>("/api/settings/jellyfin/users");
+    setJellyfinUsers(users);
+    setStatus(`${users.length} Jellyfin-Benutzer geladen.`);
   }
 
   async function saveProfileMapping() {
@@ -213,14 +225,30 @@ export function IntegrationsPage({ user, onUserUpdated }: IntegrationsPageProps)
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
           <label className="block text-sm">
-            Deine Jellyfin-UserId
-            <input
-              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2"
-              value={jellyfinUserId}
-              onChange={(event) => setJellyfinUserId(event.target.value)}
-              placeholder="Jellyfin UserId aus dem Jellyfin-Test oder Webhook"
-            />
+            Dein Jellyfin-Benutzer
+            {jellyfinUsers.length > 0 ? (
+              <select
+                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2"
+                value={jellyfinUserId}
+                onChange={(event) => setJellyfinUserId(event.target.value)}
+              >
+                <option value="">Benutzer waehlen</option>
+                {jellyfinUsers.map((option) => (
+                  <option key={option.id} value={option.id}>{option.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2"
+                value={jellyfinUserId}
+                onChange={(event) => setJellyfinUserId(event.target.value)}
+                placeholder="Jellyfin UserId oder Benutzername"
+              />
+            )}
           </label>
+          <button type="button" className="self-end rounded-md bg-slate-800 px-3 py-2 text-sm" onClick={() => void loadJellyfinUsers()}>
+            Benutzer laden
+          </button>
           <button type="button" className="self-end rounded-md bg-slate-800 px-3 py-2 text-sm" onClick={() => void saveProfileMapping()}>
             UserId speichern
           </button>
