@@ -5,14 +5,14 @@
  * Debugging: Layout bugs usually come from child pages using fixed widths.
  */
 
-import { Film, LayoutDashboard, List, LogOut, Plug, PlusCircle, Tv } from "lucide-react";
+import { Film, LayoutDashboard, List, LogOut, Plug, PlusCircle, Sparkles, Tv } from "lucide-react";
 import type { ReactNode } from "react";
 
 type LayoutProps = {
   children: ReactNode;
   onLogout: () => void;
-  active: "dashboard" | "timeline" | "series" | "manual" | "integrations";
-  setActive: (page: "dashboard" | "timeline" | "series" | "manual" | "integrations") => void;
+  active: "dashboard" | "timeline" | "series" | "swipe" | "manual" | "integrations";
+  setActive: (page: "dashboard" | "timeline" | "series" | "swipe" | "manual" | "integrations") => void;
 };
 
 export function Layout({ children, onLogout, active, setActive }: LayoutProps) {
@@ -20,6 +20,7 @@ export function Layout({ children, onLogout, active, setActive }: LayoutProps) {
     { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
     { id: "timeline" as const, label: "Timeline", icon: List },
     { id: "series" as const, label: "Serien", icon: Tv },
+    { id: "swipe" as const, label: "Swipen", icon: Sparkles },
     { id: "manual" as const, label: "Manuell", icon: PlusCircle },
     { id: "integrations" as const, label: "Integrationen", icon: Plug },
   ];

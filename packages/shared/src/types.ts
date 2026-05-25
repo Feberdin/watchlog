@@ -127,3 +127,25 @@ export type SeriesCatalogItem = {
   complete: boolean;
   seasons: SeriesSeason[];
 };
+
+export type SwipeCandidate = {
+  id: string;
+  type: "movie" | "show";
+  title: string;
+  year: number | null;
+  overview: string | null;
+  runtimeSeconds: number | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  tmdbId: string | null;
+  jellyfinItemId: string | null;
+};
+
+export type SwipeActionResult = {
+  ok: true;
+  action: "seen" | "skip" | "want";
+  mediaId: string;
+  message: string;
+  jellyfinSynced: boolean;
+  jellyseerrRequested: boolean;
+};

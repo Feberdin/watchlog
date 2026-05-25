@@ -183,3 +183,24 @@ export async function getJellyfinItem(
 
   return fetchJson<JellyfinWatchedItem>("Jellyfin", url.toString(), { headers: jellyfinHeaders(apiKey) });
 }
+
+export async function markJellyfinItemPlayed(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  jellyfinUserId: string,
+  itemId: string,
+  datePlayed: Date,
+): Promise<void> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
+  const url = new URL(`${normalizedBaseUrl}/Users/${encodeURIComponent(jellyfinUserId)}/PlayedItems/${encodeURIComponent(itemId)}`);
+  url.searchParams.set("DatePlayed", datePlayed.toISOString());
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: jellyfinHeaders(apiKey),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Jellyfin: Konnte Medium nicht als gesehen markieren (HTTP ${response.status}). Bitte Jellyfin-UserId und API-Key pruefen.`);
+  }
+}

@@ -103,6 +103,16 @@ export const markWatchedSchema = z.object({
   watchedAt: z.preprocess(emptyStringToNull, z.string().trim().min(1).nullable().optional()),
 });
 
+export const swipeCandidateQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  type: z.enum(["movie", "show", "all"]).default("all"),
+});
+
+export const swipeActionSchema = z.object({
+  mediaId: z.string().cuid(),
+  action: z.enum(["seen", "skip", "want"]),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
@@ -114,3 +124,5 @@ export type JellyseerrSettingsInput = z.infer<typeof jellyseerrSettingsSchema>;
 export type TmdbSearchInput = z.infer<typeof tmdbSearchSchema>;
 export type TmdbImportInput = z.infer<typeof tmdbImportSchema>;
 export type MarkWatchedInput = z.infer<typeof markWatchedSchema>;
+export type SwipeCandidateQueryInput = z.infer<typeof swipeCandidateQuerySchema>;
+export type SwipeActionInput = z.infer<typeof swipeActionSchema>;

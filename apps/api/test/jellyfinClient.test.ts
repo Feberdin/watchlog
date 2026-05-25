@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jellyfinPrimaryImageUrl, listWatchedJellyfinItems, ticksToSeconds } from "../src/services/jellyfinClient.js";
+import { jellyfinPrimaryImageUrl, listWatchedJellyfinItems, markJellyfinItemPlayed, ticksToSeconds } from "../src/services/jellyfinClient.js";
 
 describe("jellyfinClient", () => {
   afterEach(() => {
@@ -38,6 +38,22 @@ describe("jellyfinClient", () => {
     expect(calledUrl.pathname).toBe("/Users/jf-user-1/Items");
     expect(calledUrl.searchParams.get("Filters")).toBe("IsPlayed");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: expect.objectContaining({ "X-Emby-Token": "api-key" }),
+    });
+  });
+
+  it("marks one Jellyfin item as played for the mapped user", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+    } as Response);
+
+    await markJellyfinItemPlayed("http://jellyfin.local:8096", "api-key", "user-1", "item-1", new Date("2026-05-25T10:00:00.000Z"));
+    const calledUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+
+    expect(calledUrl.pathname).toBe("/Users/user-1/PlayedItems/item-1");
+    expect(calledUrl.searchParams.get("DatePlayed")).toBe("2026-05-25T10:00:00.000Z");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
       headers: expect.objectContaining({ "X-Emby-Token": "api-key" }),
     });
   });
