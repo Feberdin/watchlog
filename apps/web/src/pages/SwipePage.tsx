@@ -30,6 +30,11 @@ function bucketLabel(bucket: SwipeCandidate["recommendationBucket"]) {
   return "Vorschlag";
 }
 
+function ratingLabel(value: number | null) {
+  if (typeof value !== "number") return "n/a";
+  return value.toFixed(1);
+}
+
 function actionFromDrag(deltaX: number, deltaY: number): SwipeAction | null {
   const horizontal = Math.abs(deltaX);
   const vertical = Math.abs(deltaY);
@@ -168,11 +173,15 @@ export function SwipePage() {
                 ) : (
                   <div className="flex h-full items-center justify-center bg-slate-800 text-slate-500">{current.type === "movie" ? "Film" : "Serie"}</div>
                 )}
+                <div className="absolute right-4 top-4 rounded-lg border border-amber-200/50 bg-slate-950/85 px-3 py-2 text-right shadow-lg backdrop-blur">
+                  <p className="text-xs font-medium uppercase text-amber-200">TMDb</p>
+                  <p className="text-3xl font-semibold leading-none text-amber-200">{ratingLabel(current.voteAverage)}</p>
+                  {current.voteCount && <p className="mt-1 text-xs text-slate-300">{current.voteCount} Stimmen</p>}
+                </div>
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent p-4 pt-28">
                   <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium">
                     <span className="rounded bg-teal-300 px-2 py-1 text-slate-950">{bucketLabel(current.recommendationBucket)}</span>
                     <span className="rounded bg-slate-900/90 px-2 py-1 text-slate-200">{current.type === "movie" ? "Film" : "Serie"}</span>
-                    {current.voteAverage && <span className="rounded bg-slate-900/90 px-2 py-1 text-slate-200">TMDb {current.voteAverage.toFixed(1)}</span>}
                   </div>
                   <h2 className="text-3xl font-semibold leading-tight drop-shadow">{current.title}</h2>
                   <p className="mt-2 text-sm text-slate-300">
