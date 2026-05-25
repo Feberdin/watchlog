@@ -51,6 +51,7 @@ export function SeriesPage() {
 
   async function syncJellyfin() {
     setSyncing(true);
+    setStatus("Serien werden mit Jellyfin und TMDb synchronisiert. Das kann je nach Serienanzahl etwas dauern.");
     try {
       const response = await apiRequest<{ message: string }>("/api/series/sync-jellyfin", { method: "POST", body: "{}" });
       setStatus(response.message);
