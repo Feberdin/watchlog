@@ -56,9 +56,9 @@ npm test
 | `POSTGRES_PASSWORD` | `secret://WATCHLOG_POSTGRES_PASSWORD` | PostgreSQL password |
 | `SESSION_SECRET` | `secret://WATCHLOG_SESSION_SECRET` | Cookie/session signing secret |
 | `WEBHOOK_SECRET` | `secret://WATCHLOG_WEBHOOK_SECRET` | Jellyfin webhook shared secret |
-| `JELLYFIN_URL` | empty | Jellyfin server URL, e.g. `http://192.168.57.10:8096` |
+| `JELLYFIN_URL` | `secret://WATCHLOG_JELLYFIN_URL` | Broker-managed Jellyfin server URL, e.g. `http://192.168.57.10:8096` |
 | `JELLYFIN_API_KEY` | `secret://WATCHLOG_JELLYFIN_API_KEY` | Broker-injected Jellyfin API key |
-| `JELLYSEERR_URL` | empty | Jellyseerr server URL, e.g. `http://192.168.57.10:5055` |
+| `JELLYSEERR_URL` | `secret://WATCHLOG_JELLYSEERR_URL` | Broker-managed Jellyseerr server URL, e.g. `http://192.168.57.10:5055` |
 | `JELLYSEERR_API_KEY` | `secret://WATCHLOG_JELLYSEERR_API_KEY` | Broker-injected Jellyseerr API key |
 | `TMDB_BEARER_TOKEN` | `secret://WATCHLOG_TMDB_BEARER_TOKEN` | Broker-injected TMDb bearer token |
 | `REGISTRATION_ENABLED` | `false` | Allows registration after first admin |
@@ -80,7 +80,9 @@ Integration secrets:
 
 | Secret | Used by | Notes |
 | --- | --- | --- |
+| `WATCHLOG_JELLYFIN_URL` | Jellyfin API client | Server URL including scheme, host, and port |
 | `WATCHLOG_JELLYFIN_API_KEY` | Jellyfin API client | Used for connection test and future library sync |
+| `WATCHLOG_JELLYSEERR_URL` | Jellyseerr API client | Server URL including scheme, host, and port |
 | `WATCHLOG_JELLYSEERR_API_KEY` | Jellyseerr API client | Used for connection test and future request import |
 | `WATCHLOG_TMDB_BEARER_TOKEN` | TMDb metadata | Used for metadata search/import |
 

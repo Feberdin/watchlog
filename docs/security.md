@@ -43,6 +43,8 @@ GitOps deployment references these values by name only:
 - `secret://WATCHLOG_DATABASE_URL`
 - `secret://WATCHLOG_SESSION_SECRET`
 - `secret://WATCHLOG_WEBHOOK_SECRET`
+- `secret://WATCHLOG_JELLYFIN_URL` optional
 - `secret://WATCHLOG_JELLYFIN_API_KEY` optional
+- `secret://WATCHLOG_JELLYSEERR_URL` optional
 - `secret://WATCHLOG_JELLYSEERR_API_KEY` optional
 - `secret://WATCHLOG_TMDB_BEARER_TOKEN` optional

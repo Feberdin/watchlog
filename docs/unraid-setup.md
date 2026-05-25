@@ -14,7 +14,9 @@ Debugging: Use Unraid container logs and verify appdata permissions.
    - `WATCHLOG_DATABASE_URL`
    - `WATCHLOG_SESSION_SECRET`
    - `WATCHLOG_WEBHOOK_SECRET`
+   - `WATCHLOG_JELLYFIN_URL`
    - `WATCHLOG_JELLYFIN_API_KEY`
+   - `WATCHLOG_JELLYSEERR_URL`
    - `WATCHLOG_JELLYSEERR_API_KEY`
    - `WATCHLOG_TMDB_BEARER_TOKEN`
 4. Use `docker-compose.yml` for GitOps broker deployment.
