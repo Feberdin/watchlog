@@ -33,12 +33,20 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
   });
 
   app.addHook("preHandler", async (request: FastifyRequest) => {
-    const token = request.cookies[SESSION_COOKIE_NAME];
+    const rawToken = request.cookies[SESSION_COOKIE_NAME];
     request.currentUser = null;
 
-    if (!token) {
+    if (!rawToken) {
       return;
     }
+
+    const unsigned = request.unsignCookie(rawToken);
+    if (!unsigned.valid) {
+      request.log.warn("Ignoring invalid session cookie signature.");
+      return;
+    }
+
+    const token = unsigned.value;
 
     const session = await app.prisma.session.findUnique({
       where: { tokenHash: sha256(token) },
@@ -58,6 +66,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
       httpOnly: true,
       sameSite: "lax",
       secure: options.secureCookies,
+      signed: true,
       maxAge: 60 * 60 * 24 * 30,
     });
   });
