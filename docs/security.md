@@ -31,6 +31,7 @@ Use long random values for:
 SESSION_SECRET
 WEBHOOK_SECRET
 JELLYFIN_API_KEY
+JELLYSEERR_API_KEY
 TMDB_BEARER_TOKEN
 ```
 
@@ -43,4 +44,5 @@ GitOps deployment references these values by name only:
 - `secret://WATCHLOG_SESSION_SECRET`
 - `secret://WATCHLOG_WEBHOOK_SECRET`
 - `secret://WATCHLOG_JELLYFIN_API_KEY` optional
+- `secret://WATCHLOG_JELLYSEERR_API_KEY` optional
 - `secret://WATCHLOG_TMDB_BEARER_TOKEN` optional

@@ -45,6 +45,8 @@ const envSchema = z.object({
   WEBHOOK_SECRET: z.string().min(8, "WEBHOOK_SECRET muss mindestens 8 Zeichen lang sein."),
   JELLYFIN_URL: z.string().optional().default(""),
   JELLYFIN_API_KEY: z.string().optional().default(""),
+  JELLYSEERR_URL: z.string().optional().default(""),
+  JELLYSEERR_API_KEY: z.string().optional().default(""),
   TMDB_BEARER_TOKEN: z.string().optional().default(""),
   REGISTRATION_ENABLED: booleanFromEnv,
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),

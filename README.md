@@ -56,6 +56,11 @@ npm test
 | `POSTGRES_PASSWORD` | `secret://WATCHLOG_POSTGRES_PASSWORD` | PostgreSQL password |
 | `SESSION_SECRET` | `secret://WATCHLOG_SESSION_SECRET` | Cookie/session signing secret |
 | `WEBHOOK_SECRET` | `secret://WATCHLOG_WEBHOOK_SECRET` | Jellyfin webhook shared secret |
+| `JELLYFIN_URL` | empty | Jellyfin server URL, e.g. `http://192.168.57.10:8096` |
+| `JELLYFIN_API_KEY` | `secret://WATCHLOG_JELLYFIN_API_KEY` | Broker-injected Jellyfin API key |
+| `JELLYSEERR_URL` | empty | Jellyseerr server URL, e.g. `http://192.168.57.10:5055` |
+| `JELLYSEERR_API_KEY` | `secret://WATCHLOG_JELLYSEERR_API_KEY` | Broker-injected Jellyseerr API key |
+| `TMDB_BEARER_TOKEN` | `secret://WATCHLOG_TMDB_BEARER_TOKEN` | Broker-injected TMDb bearer token |
 | `REGISTRATION_ENABLED` | `false` | Allows registration after first admin |
 | `LOG_LEVEL` | `info` | `debug` is useful while integrating Jellyfin |
 | `SECURE_COOKIES` | `false` | Set `true` behind HTTPS |
@@ -71,12 +76,13 @@ The Unraid Deployment Broker must provide these secrets:
 | `WATCHLOG_SESSION_SECRET` | WatchLog API | Long random value for HTTP-only sessions |
 | `WATCHLOG_WEBHOOK_SECRET` | WatchLog API | Shared secret for Jellyfin webhook requests |
 
-Optional future/metadata secrets:
+Integration secrets:
 
 | Secret | Used by | Notes |
 | --- | --- | --- |
-| `WATCHLOG_JELLYFIN_API_KEY` | Jellyfin API client | Not required for Phase 1 webhook ingest |
-| `WATCHLOG_TMDB_BEARER_TOKEN` | TMDb metadata | Not required for Phase 1 |
+| `WATCHLOG_JELLYFIN_API_KEY` | Jellyfin API client | Used for connection test and future library sync |
+| `WATCHLOG_JELLYSEERR_API_KEY` | Jellyseerr API client | Used for connection test and future request import |
+| `WATCHLOG_TMDB_BEARER_TOKEN` | TMDb metadata | Used for metadata search/import |
 
 Never commit real secret values. In GitOps files, use only `secret://NAME`.
 

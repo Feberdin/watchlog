@@ -30,6 +30,7 @@ import { dashboardRoutes } from "./routes/dashboard.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { exportRoutes } from "./routes/export.js";
 import { metadataRoutes } from "./routes/metadata.js";
+import { seedIntegrationSettingsFromEnv } from "./services/envSettings.js";
 
 function isAllowedBrowserOrigin(origin: string, env: AppEnv): boolean {
   const configuredOrigins = new Set([
@@ -88,6 +89,7 @@ export async function buildApp(env: AppEnv) {
   });
   await app.register(swaggerUi, { routePrefix: "/api/docs" });
   await app.register(prismaPlugin);
+  await seedIntegrationSettingsFromEnv(app.prisma, env);
   await app.register(authPlugin, { secureCookies: env.SECURE_COOKIES || env.APP_URL.startsWith("https://") });
 
   app.setErrorHandler((error, request, reply) => {
