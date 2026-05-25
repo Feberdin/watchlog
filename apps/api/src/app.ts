@@ -30,6 +30,33 @@ import { dashboardRoutes } from "./routes/dashboard.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { exportRoutes } from "./routes/export.js";
 
+function isAllowedBrowserOrigin(origin: string, env: AppEnv): boolean {
+  const configuredOrigins = new Set([
+    env.APP_URL,
+    `http://localhost:${env.APP_PORT}`,
+    `http://127.0.0.1:${env.APP_PORT}`,
+  ]);
+
+  if (configuredOrigins.has(origin)) {
+    return true;
+  }
+
+  try {
+    const parsedOrigin = new URL(origin);
+    const isExpectedPort = parsedOrigin.port === String(env.APP_PORT);
+    const isPrivateHost =
+      parsedOrigin.hostname === "localhost" ||
+      parsedOrigin.hostname === "127.0.0.1" ||
+      parsedOrigin.hostname.startsWith("192.168.") ||
+      parsedOrigin.hostname.startsWith("10.") ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(parsedOrigin.hostname);
+
+    return isExpectedPort && isPrivateHost;
+  } catch {
+    return false;
+  }
+}
+
 export async function buildApp(env: AppEnv) {
   const app = fastify({
     logger: {
@@ -40,7 +67,17 @@ export async function buildApp(env: AppEnv) {
 
   await app.register(sensible);
   await app.register(cookie, { secret: env.SESSION_SECRET });
-  await app.register(cors, { origin: env.APP_URL, credentials: true });
+  await app.register(cors, {
+    credentials: true,
+    origin(origin, callback) {
+      if (!origin || isAllowedBrowserOrigin(origin, env)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Origin not allowed by WatchLog CORS policy."), false);
+    },
+  });
   await app.register(formbody);
   await app.register(multipart);
   await app.register(swagger, {
@@ -88,6 +125,11 @@ export async function buildApp(env: AppEnv) {
     await app.register(staticPlugin, {
       root: webDist,
       prefix: "/",
+      setHeaders(response, filePath) {
+        if (filePath.endsWith("index.html")) {
+          response.setHeader("cache-control", "no-store");
+        }
+      },
     });
   }
 
@@ -98,6 +140,7 @@ export async function buildApp(env: AppEnv) {
     }
 
     if (hasWebBuild) {
+      reply.header("cache-control", "no-store");
       reply.sendFile("index.html");
       return;
     }

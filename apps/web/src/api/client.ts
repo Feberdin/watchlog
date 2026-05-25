@@ -8,6 +8,7 @@
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...options,
+    cache: "no-store",
     credentials: "include",
     headers: {
       "content-type": "application/json",

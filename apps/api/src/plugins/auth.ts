@@ -35,14 +35,23 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
   app.addHook("preHandler", async (request: FastifyRequest) => {
     const rawToken = request.cookies[SESSION_COOKIE_NAME];
     request.currentUser = null;
+    const isProtectedApiRequest =
+      request.url.startsWith("/api/") &&
+      !request.url.startsWith("/api/auth/login") &&
+      !request.url.startsWith("/api/auth/register") &&
+      !request.url.startsWith("/api/health") &&
+      !request.url.startsWith("/api/webhooks/");
 
     if (!rawToken) {
+      if (isProtectedApiRequest) {
+        request.log.info({ path: request.url }, "No session cookie received for protected API request.");
+      }
       return;
     }
 
     const unsigned = request.unsignCookie(rawToken);
     if (!unsigned.valid) {
-      request.log.warn("Ignoring invalid session cookie signature.");
+      request.log.warn({ path: request.url }, "Ignoring invalid session cookie signature.");
       return;
     }
 
@@ -54,6 +63,9 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
     });
 
     if (!session || session.expiresAt < new Date()) {
+      if (isProtectedApiRequest) {
+        request.log.info({ path: request.url }, "Session cookie did not match an active session.");
+      }
       return;
     }
 
@@ -61,6 +73,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
   });
 
   app.decorate("setSessionCookie", (reply: FastifyReply, token: string) => {
+    reply.header("cache-control", "no-store");
     reply.setCookie(SESSION_COOKIE_NAME, token, {
       path: "/",
       httpOnly: true,
@@ -72,6 +85,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
   });
 
   app.decorate("clearSessionCookie", (reply: FastifyReply) => {
+    reply.header("cache-control", "no-store");
     reply.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
   });
 });
