@@ -31,6 +31,7 @@ import { settingsRoutes } from "./routes/settings.js";
 import { exportRoutes } from "./routes/export.js";
 import { importRoutes } from "./routes/import.js";
 import { metadataRoutes } from "./routes/metadata.js";
+import { seriesRoutes } from "./routes/series.js";
 import { seedIntegrationSettingsFromEnv } from "./services/envSettings.js";
 
 function isAllowedBrowserOrigin(origin: string, env: AppEnv): boolean {
@@ -128,6 +129,7 @@ export async function buildApp(env: AppEnv) {
     await api.register(exportRoutes);
     await api.register(importRoutes);
     await api.register(metadataRoutes);
+    await api.register(seriesRoutes);
   }, { prefix: "/api" });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

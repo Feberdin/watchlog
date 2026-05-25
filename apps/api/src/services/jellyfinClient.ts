@@ -135,6 +135,39 @@ export async function listWatchedJellyfinItems(
   return items;
 }
 
+export async function listAllJellyfinEpisodes(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  jellyfinUserId: string,
+): Promise<JellyfinWatchedItem[]> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
+  const headers = jellyfinHeaders(apiKey);
+  const limit = 300;
+  const items: JellyfinWatchedItem[] = [];
+
+  for (let startIndex = 0; startIndex < 20_000; startIndex += limit) {
+    const url = new URL(`${normalizedBaseUrl}/Users/${encodeURIComponent(jellyfinUserId)}/Items`);
+    url.searchParams.set("Recursive", "true");
+    url.searchParams.set("IncludeItemTypes", "Episode");
+    url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
+    url.searchParams.set("SortBy", "SeriesSortName,ParentIndexNumber,IndexNumber");
+    url.searchParams.set("SortOrder", "Ascending");
+    url.searchParams.set("StartIndex", String(startIndex));
+    url.searchParams.set("Limit", String(limit));
+
+    const response = await fetchJson<JellyfinItemsResponse>("Jellyfin", url.toString(), { headers }, 15_000);
+    const page = response.Items ?? [];
+    items.push(...page);
+
+    const total = response.TotalRecordCount ?? items.length;
+    if (page.length < limit || items.length >= total) {
+      break;
+    }
+  }
+
+  return items;
+}
+
 export async function getJellyfinItem(
   baseUrl: string,
   apiKey: string | null | undefined,

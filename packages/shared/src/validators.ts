@@ -98,6 +98,11 @@ export const tmdbImportSchema = z.object({
   tmdbId: z.coerce.number().int().positive(),
 });
 
+export const markWatchedSchema = z.object({
+  mediaIds: z.array(z.string().cuid()).min(1).max(500),
+  watchedAt: z.preprocess(emptyStringToNull, z.string().trim().min(1).nullable().optional()),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
@@ -108,3 +113,4 @@ export type TmdbSettingsInput = z.infer<typeof tmdbSettingsSchema>;
 export type JellyseerrSettingsInput = z.infer<typeof jellyseerrSettingsSchema>;
 export type TmdbSearchInput = z.infer<typeof tmdbSearchSchema>;
 export type TmdbImportInput = z.infer<typeof tmdbImportSchema>;
+export type MarkWatchedInput = z.infer<typeof markWatchedSchema>;

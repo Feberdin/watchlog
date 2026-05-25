@@ -15,9 +15,10 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { TimelinePage } from "./pages/TimelinePage";
 import { ManualAddPage } from "./pages/ManualAddPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
+import { SeriesPage } from "./pages/SeriesPage";
 import "./styles/index.css";
 
-type Page = "dashboard" | "timeline" | "manual" | "integrations";
+type Page = "dashboard" | "timeline" | "series" | "manual" | "integrations";
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -48,6 +49,7 @@ function App() {
     <Layout active={active} setActive={setActive} onLogout={() => void logout()}>
       {active === "dashboard" && <DashboardPage />}
       {active === "timeline" && <TimelinePage />}
+      {active === "series" && <SeriesPage />}
       {active === "manual" && <ManualAddPage />}
       {active === "integrations" && <IntegrationsPage user={user} onUserUpdated={setUser} />}
     </Layout>

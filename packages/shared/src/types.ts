@@ -96,3 +96,31 @@ export type JellyfinWatchedImportResult = {
   failed: number;
   message: string;
 };
+
+export type SeriesEpisode = {
+  id: string;
+  title: string;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  watched: boolean;
+  watchedAt: string | null;
+  posterUrl: string | null;
+};
+
+export type SeriesSeason = {
+  seasonNumber: number | null;
+  episodes: SeriesEpisode[];
+  watchedEpisodes: number;
+  totalEpisodes: number;
+  complete: boolean;
+};
+
+export type SeriesCatalogItem = {
+  id: string;
+  title: string;
+  posterUrl: string | null;
+  watchedEpisodes: number;
+  totalEpisodes: number;
+  complete: boolean;
+  seasons: SeriesSeason[];
+};
