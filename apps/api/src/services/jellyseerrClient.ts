@@ -24,6 +24,13 @@ export type JellyseerrRequestResult = {
   alreadyRequested: boolean;
 };
 
+type JellyseerrTvDetail = {
+  seasons?: Array<{
+    seasonNumber?: number;
+    status?: number;
+  }>;
+};
+
 export async function testJellyseerrConnection(baseUrl: string, apiKey: string | null | undefined): Promise<JellyseerrConnectionResult> {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyseerr");
   if (!apiKey) {
@@ -41,6 +48,42 @@ export async function testJellyseerrConnection(baseUrl: string, apiKey: string |
   };
 }
 
+async function responseErrorMessage(serviceName: string, response: Response): Promise<string> {
+  const fallback = `${serviceName}: Request konnte nicht angelegt werden (HTTP ${response.status}). Bitte Jellyseerr-Regeln, Sonarr/Radarr-Zuordnung und API-Key pruefen.`;
+
+  try {
+    const body = await response.json() as { message?: unknown; error?: unknown; errorMessage?: unknown };
+    const detail = [body.message, body.errorMessage, body.error].find((value) => typeof value === "string" && value.trim().length > 0);
+    return detail ? `${fallback} Detail: ${detail}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function jellyseerrRequestBody(
+  normalizedBaseUrl: string,
+  apiKey: string,
+  mediaType: "movie" | "tv",
+  tmdbId: number,
+): Promise<{ mediaType: "movie" | "tv"; mediaId: number; seasons?: number[] }> {
+  if (mediaType === "movie") {
+    return { mediaType, mediaId: tmdbId };
+  }
+
+  const detail = await fetchJson<JellyseerrTvDetail>("Jellyseerr", `${normalizedBaseUrl}/api/v1/tv/${tmdbId}`, {
+    headers: { "X-Api-Key": apiKey },
+  });
+  const seasons = (detail.seasons ?? [])
+    .map((season) => season.seasonNumber)
+    .filter((seasonNumber): seasonNumber is number => typeof seasonNumber === "number" && seasonNumber > 0);
+
+  if (seasons.length === 0) {
+    throw new Error("Jellyseerr: Fuer diese Serie wurden keine anfragbaren Staffeln gefunden. Bitte in Jellyseerr pruefen, ob die Serie bereits vorhanden ist oder Sonarr die Serie matchen kann.");
+  }
+
+  return { mediaType, mediaId: tmdbId, seasons };
+}
+
 export async function requestJellyseerrMedia(
   baseUrl: string,
   apiKey: string | null | undefined,
@@ -52,6 +95,7 @@ export async function requestJellyseerrMedia(
     throw new Error("Jellyseerr: API-Key fehlt. Bitte in den Integrationen speichern.");
   }
 
+  const body = await jellyseerrRequestBody(normalizedBaseUrl, apiKey, mediaType, tmdbId);
   const response = await fetch(`${normalizedBaseUrl}/api/v1/request`, {
     method: "POST",
     headers: {
@@ -59,7 +103,7 @@ export async function requestJellyseerrMedia(
       "content-type": "application/json",
       "X-Api-Key": apiKey,
     },
-    body: JSON.stringify({ mediaType, mediaId: tmdbId }),
+    body: JSON.stringify(body),
   });
 
   if (response.status === 409) {
@@ -67,7 +111,7 @@ export async function requestJellyseerrMedia(
   }
 
   if (!response.ok) {
-    throw new Error(`Jellyseerr: Request konnte nicht angelegt werden (HTTP ${response.status}). Bitte Jellyseerr-Regeln und API-Key pruefen.`);
+    throw new Error(await responseErrorMessage("Jellyseerr", response));
   }
 
   return { accepted: true, alreadyRequested: false };

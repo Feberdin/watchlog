@@ -88,7 +88,14 @@ async function upsertRecommendation(prisma: PrismaClient, recommendation: TmdbRe
 async function hasUserDecisionOrWatch(prisma: PrismaClient, userId: string, mediaId: string): Promise<boolean> {
   const [watchEvent, swipeDecision] = await Promise.all([
     prisma.watchEvent.findFirst({ where: { userId, mediaId }, select: { id: true } }),
-    prisma.swipeDecision.findUnique({ where: { userId_mediaId: { userId, mediaId } }, select: { id: true } }),
+    prisma.swipeDecision.findFirst({
+      where: {
+        userId,
+        mediaId,
+        NOT: { externalStatus: "failed" },
+      },
+      select: { id: true },
+    }),
   ]);
 
   return Boolean(watchEvent || swipeDecision);
@@ -139,7 +146,7 @@ export async function listSwipeCandidates(
     where: {
       type: { in: typeFilter },
       watchEvents: { none: { userId } },
-      swipeDecisions: { none: { userId } },
+      swipeDecisions: { none: { userId, NOT: { externalStatus: "failed" } } },
     },
     orderBy: [
       { posterUrl: "desc" },

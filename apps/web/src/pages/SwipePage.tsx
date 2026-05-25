@@ -75,6 +75,7 @@ export function SwipePage() {
   async function submitAction(action: SwipeAction) {
     if (!current || pending) return;
     setPending(true);
+    setLastResult(null);
     setStatus(`${actionText[action]} wird gespeichert...`);
     try {
       const result = await apiRequest<SwipeActionResult>("/api/swipe/action", {
@@ -87,6 +88,8 @@ export function SwipePage() {
       setDrag({ active: false, startX: 0, startY: 0, x: 0, y: 0 });
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Swipe konnte nicht gespeichert werden.");
+      setLastResult(null);
+      setDrag({ active: false, startX: 0, startY: 0, x: 0, y: 0 });
     } finally {
       setPending(false);
     }
