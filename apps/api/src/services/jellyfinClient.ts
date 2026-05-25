@@ -93,12 +93,16 @@ export function ticksToSeconds(ticks: number | null | undefined): number | null 
 }
 
 export function jellyfinPrimaryImageUrl(baseUrl: string, item: JellyfinWatchedItem): string | null {
-  if (!item.Id || !item.ImageTags?.Primary) {
+  if (!item.Id) {
     return null;
   }
 
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
-  return `${normalizedBaseUrl}/Items/${encodeURIComponent(item.Id)}/Images/Primary?tag=${encodeURIComponent(item.ImageTags.Primary)}`;
+  if (item.ImageTags?.Primary) {
+    return `${normalizedBaseUrl}/Items/${encodeURIComponent(item.Id)}/Images/Primary?tag=${encodeURIComponent(item.ImageTags.Primary)}`;
+  }
+
+  return `${normalizedBaseUrl}/Items/${encodeURIComponent(item.Id)}/Images/Primary`;
 }
 
 export async function listWatchedJellyfinItems(

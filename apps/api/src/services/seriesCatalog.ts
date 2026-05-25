@@ -16,7 +16,7 @@ import {
   type JellyfinWatchedItem,
 } from "./jellyfinClient.js";
 import { getSetting } from "./settings.js";
-import { getTmdbSeasonEpisodes, getTmdbTvCatalog, type TmdbSettingsForClient } from "./tmdbClient.js";
+import { getTmdbSeasonEpisodes, getTmdbTvCatalog, searchTmdb, type TmdbSettingsForClient, type TmdbTvCatalog } from "./tmdbClient.js";
 import { nextRewatchIndex } from "./watchEvents.js";
 
 const jellyfinDefaults = {
@@ -45,6 +45,24 @@ function parsedLastPlayedAt(item: JellyfinWatchedItem): Date | null {
   if (!raw) return null;
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeTitleForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function shouldRefresh(lastSyncedAt: Date | null, now = new Date()): boolean {
+  if (!lastSyncedAt) {
+    return true;
+  }
+
+  const maxAgeMs = 12 * 60 * 60 * 1000;
+  return now.getTime() - lastSyncedAt.getTime() > maxAgeMs;
 }
 
 function sameWatchedAtFilter(watchedAt: Date | null) {
@@ -183,25 +201,41 @@ async function upsertEpisodeFromJellyfin(
   }
 }
 
-async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSettingsForClient): Promise<number> {
+async function resolveTmdbCatalogForShow(show: {
+  title: string;
+  year: number | null;
+  tmdbId: string | null;
+}, tmdbSettings: TmdbSettingsForClient): Promise<TmdbTvCatalog | null> {
+  const existingTmdbId = Number(show.tmdbId);
+  if (Number.isInteger(existingTmdbId) && existingTmdbId > 0) {
+    return getTmdbTvCatalog(tmdbSettings, existingTmdbId).catch(() => null);
+  }
+
+  const results = await searchTmdb(tmdbSettings, show.title, "show", show.year).catch(() => []);
+  const normalizedShowTitle = normalizeTitleForMatch(show.title);
+  const match = results.find((result) => normalizeTitleForMatch(result.title) === normalizedShowTitle)
+    ?? results.find((result) => result.year === show.year)
+    ?? results[0]
+    ?? null;
+
+  return match ? getTmdbTvCatalog(tmdbSettings, match.tmdbId).catch(() => null) : null;
+}
+
+async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSettingsForClient): Promise<{ created: number; updated: number }> {
   if (!tmdbSettings.tmdbBearerToken) {
-    return 0;
+    return { created: 0, updated: 0 };
   }
 
   const shows = await prisma.media.findMany({
-    where: { type: "show", tmdbId: { not: null } },
+    where: { type: "show" },
     include: { children: { where: { type: "episode" } } },
     orderBy: { title: "asc" },
   });
 
   let created = 0;
+  let updated = 0;
   for (const show of shows) {
-    const tmdbId = Number(show.tmdbId);
-    if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
-      continue;
-    }
-
-    const catalog = await getTmdbTvCatalog(tmdbSettings, tmdbId).catch(() => null);
+    const catalog = await resolveTmdbCatalogForShow(show, tmdbSettings);
     if (!catalog) {
       continue;
     }
@@ -211,6 +245,7 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
       data: {
         title: show.title || catalog.title,
         originalTitle: catalog.originalTitle,
+        tmdbId: show.tmdbId ?? String(catalog.tmdbId),
         year: show.year ?? catalog.startYear,
         overview: show.overview ?? catalog.overview,
         imdbId: show.imdbId ?? catalog.imdbId,
@@ -222,17 +257,34 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
       },
     });
 
-    const existingBySeasonEpisode = new Set(
+    const existingBySeasonEpisode = new Map(
       show.children
         .filter((episode) => episode.seasonNumber != null && episode.episodeNumber != null)
-        .map((episode) => `${episode.seasonNumber}:${episode.episodeNumber}`),
+        .map((episode) => [`${episode.seasonNumber}:${episode.episodeNumber}`, episode]),
     );
+    const knownSeasonEpisodes = new Set(existingBySeasonEpisode.keys());
 
     for (const season of catalog.seasons) {
-      const episodes = await getTmdbSeasonEpisodes(tmdbSettings, tmdbId, season.seasonNumber).catch(() => []);
+      const episodes = await getTmdbSeasonEpisodes(tmdbSettings, catalog.tmdbId, season.seasonNumber).catch(() => []);
       for (const episode of episodes) {
         const key = `${episode.seasonNumber}:${episode.episodeNumber}`;
-        if (existingBySeasonEpisode.has(key)) {
+        const existing = existingBySeasonEpisode.get(key);
+        if (existing) {
+          await prisma.media.update({
+            where: { id: existing.id },
+            data: {
+              ...(existing.year ? {} : { year: episode.year }),
+              ...(existing.overview ? {} : { overview: episode.overview }),
+              ...(existing.runtimeSeconds ? {} : { runtimeSeconds: episode.runtimeSeconds }),
+              ...(existing.tmdbId ? {} : { tmdbId: String(episode.tmdbId) }),
+              ...(existing.posterUrl ? {} : { posterUrl: episode.posterUrl ?? season.posterUrl }),
+              metadataLastSyncedAt: new Date(),
+            },
+          });
+          updated += 1;
+          continue;
+        }
+        if (knownSeasonEpisodes.has(key)) {
           continue;
         }
 
@@ -252,13 +304,13 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
             metadataLastSyncedAt: new Date(),
           },
         });
-        existingBySeasonEpisode.add(key);
+        knownSeasonEpisodes.add(key);
         created += 1;
       }
     }
   }
 
-  return created;
+  return { created, updated };
 }
 
 export async function syncJellyfinSeriesCatalog(prisma: PrismaClient, user: User) {
@@ -281,9 +333,38 @@ export async function syncJellyfinSeriesCatalog(prisma: PrismaClient, user: User
   }
 
   const tmdbSettings = await getSetting(prisma, "tmdb", tmdbDefaults);
-  const tmdbCreated = await enrichSeriesFromTmdb(prisma, tmdbSettings);
+  const tmdbResult = await enrichSeriesFromTmdb(prisma, tmdbSettings);
 
-  return { ok: true, synced, tmdbCreated, message: `${synced} Jellyfin-Episoden synchronisiert, ${tmdbCreated} fehlende TMDb-Episode(n) ergaenzt.` };
+  return {
+    ok: true,
+    synced,
+    tmdbCreated: tmdbResult.created,
+    tmdbUpdated: tmdbResult.updated,
+    message: `${synced} Jellyfin-Episoden synchronisiert, ${tmdbResult.created} fehlende TMDb-Episode(n) ergaenzt, ${tmdbResult.updated} Episode(n) aktualisiert.`,
+  };
+}
+
+export async function syncJellyfinSeriesCatalogIfStale(prisma: PrismaClient, user: User): Promise<boolean> {
+  const staleShow = await prisma.media.findFirst({
+    where: {
+      type: "show",
+      OR: [
+        { metadataLastSyncedAt: null },
+        { posterUrl: null },
+      ],
+    },
+  });
+  const oldestSyncedShow = await prisma.media.findFirst({
+    where: { type: "show" },
+    orderBy: { metadataLastSyncedAt: "asc" },
+  });
+
+  if (!staleShow && oldestSyncedShow && !shouldRefresh(oldestSyncedShow.metadataLastSyncedAt)) {
+    return false;
+  }
+
+  await syncJellyfinSeriesCatalog(prisma, user);
+  return true;
 }
 
 export async function getSeriesCatalog(prisma: PrismaClient, userId: string): Promise<SeriesCatalogItem[]> {
