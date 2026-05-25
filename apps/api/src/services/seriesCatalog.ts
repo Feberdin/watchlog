@@ -435,24 +435,28 @@ export async function markMediaWatched(prisma: PrismaClient, userId: string, med
     throw new Error("Ungueltiges gesehen-Datum. Bitte ISO-Datum verwenden oder leer lassen.");
   }
 
-  let created = 0;
-  for (const mediaId of mediaIds) {
-    const existing = await prisma.watchEvent.findFirst({ where: { userId, mediaId } });
-    if (existing) continue;
-    await prisma.watchEvent.create({
-      data: {
+  const uniqueMediaIds = [...new Set(mediaIds)];
+  const existing = await prisma.watchEvent.findMany({
+    where: { userId, mediaId: { in: uniqueMediaIds } },
+    select: { mediaId: true },
+  });
+  const existingMediaIds = new Set(existing.map((event) => event.mediaId));
+  const missingMediaIds = uniqueMediaIds.filter((mediaId) => !existingMediaIds.has(mediaId));
+
+  if (missingMediaIds.length > 0) {
+    await prisma.watchEvent.createMany({
+      data: missingMediaIds.map((mediaId) => ({
         userId,
         mediaId,
         source: "manual",
         watchedAt,
         datePrecision: "exact",
         completed: true,
-        rewatchIndex: await nextRewatchIndex(prisma, userId, mediaId),
+        rewatchIndex: 1,
         note: "Manuell aus Serienansicht als gesehen markiert.",
-      },
+      })),
     });
-    created += 1;
   }
 
-  return { ok: true, created, skipped: mediaIds.length - created };
+  return { ok: true, created: missingMediaIds.length, skipped: uniqueMediaIds.length - missingMediaIds.length };
 }

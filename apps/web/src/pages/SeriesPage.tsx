@@ -28,6 +28,7 @@ export function SeriesPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   async function loadSeries() {
     setLoading(true);
@@ -61,23 +62,32 @@ export function SeriesPage() {
     }
   }
 
-  async function markWatched(mediaIds: string[]) {
-    const response = await apiRequest<{ created: number; skipped: number }>("/api/series/mark-watched", {
-      method: "POST",
-      body: JSON.stringify({ mediaIds }),
-    });
-    setStatus(`${response.created} Episode(n) als gesehen markiert, ${response.skipped} bereits vorhanden.`);
-    await loadSeries();
+  async function markWatched(mediaIds: string[], actionKey: string) {
+    if (mediaIds.length === 0 || pendingAction) return;
+    setPendingAction(actionKey);
+    setStatus("Markierung wird gespeichert...");
+    try {
+      const response = await apiRequest<{ created: number; skipped: number }>("/api/series/mark-watched", {
+        method: "POST",
+        body: JSON.stringify({ mediaIds }),
+      });
+      setStatus(`${response.created} Episode(n) als gesehen markiert, ${response.skipped} bereits vorhanden.`);
+      await loadSeries();
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Markierung konnte nicht gespeichert werden.");
+    } finally {
+      setPendingAction(null);
+    }
   }
 
-  function markSeason(season: SeriesSeason) {
+  function markSeason(seriesId: string, season: SeriesSeason) {
     const missing = season.episodes.filter((episode) => !episode.watched).map((episode) => episode.id);
-    if (missing.length > 0) void markWatched(missing);
+    if (missing.length > 0) void markWatched(missing, `season:${seriesId}:${season.seasonNumber ?? "unknown"}`);
   }
 
   function markSeries(item: SeriesCatalogItem) {
     const missing = item.seasons.flatMap((season) => season.episodes).filter((episode) => !episode.watched).map((episode) => episode.id);
-    if (missing.length > 0) void markWatched(missing);
+    if (missing.length > 0) void markWatched(missing, `series:${item.id}`);
   }
 
   return (
@@ -131,9 +141,15 @@ export function SeriesPage() {
                     {item.complete && <CheckCircle2 className="h-5 w-5 text-teal-300" aria-label="Komplett gesehen" />}
                   </button>
                   <p className="mt-1 text-sm text-slate-400">{item.watchedEpisodes} / {item.totalEpisodes} Episoden gesehen</p>
-                  <button className="mt-3 rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" disabled={item.complete} onClick={() => markSeries(item)}>
-                    Ganze Serie als gesehen markieren
-                  </button>
+                  {!item.complete && (
+                    <button
+                      className="mt-3 rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700 disabled:cursor-wait disabled:opacity-60"
+                      disabled={Boolean(pendingAction)}
+                      onClick={() => markSeries(item)}
+                    >
+                      {pendingAction === `series:${item.id}` ? "Wird markiert..." : "Ganze Serie als gesehen markieren"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -152,9 +168,15 @@ export function SeriesPage() {
                           </button>
                           <div className="flex items-center gap-3 text-sm text-slate-400">
                             <span>{season.watchedEpisodes} / {season.totalEpisodes}</span>
-                            <button className="rounded-md bg-slate-800 px-3 py-2 text-slate-100 hover:bg-slate-700" disabled={season.complete} onClick={() => markSeason(season)}>
-                              Staffel als gesehen
-                            </button>
+                            {!season.complete && (
+                              <button
+                                className="rounded-md bg-slate-800 px-3 py-2 text-slate-100 hover:bg-slate-700 disabled:cursor-wait disabled:opacity-60"
+                                disabled={Boolean(pendingAction)}
+                                onClick={() => markSeason(item.id, season)}
+                              >
+                                {pendingAction === `season:${item.id}:${season.seasonNumber ?? "unknown"}` ? "Wird markiert..." : "Staffel als gesehen"}
+                              </button>
+                            )}
                           </div>
                         </div>
                         {seasonOpen && (
@@ -163,9 +185,15 @@ export function SeriesPage() {
                               <div key={episode.id} className="grid gap-2 px-6 py-3 sm:grid-cols-[1fr_auto_auto]">
                                 <p className={episode.watched ? "text-slate-300" : "text-slate-100"}>{episodeTitle(episode)}</p>
                                 <span className="text-sm text-slate-400">{watchedDate(episode.watchedAt)}</span>
-                                <button className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700" disabled={episode.watched} onClick={() => void markWatched([episode.id])}>
-                                  Als gesehen
-                                </button>
+                                {!episode.watched && (
+                                  <button
+                                    className="rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700 disabled:cursor-wait disabled:opacity-60"
+                                    disabled={Boolean(pendingAction)}
+                                    onClick={() => void markWatched([episode.id], `episode:${episode.id}`)}
+                                  >
+                                    {pendingAction === `episode:${episode.id}` ? "Wird markiert..." : "Als gesehen"}
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>
