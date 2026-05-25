@@ -14,12 +14,15 @@ import { AuthPage } from "./pages/AuthPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TimelinePage } from "./pages/TimelinePage";
 import { ManualAddPage } from "./pages/ManualAddPage";
+import { IntegrationsPage } from "./pages/IntegrationsPage";
 import "./styles/index.css";
+
+type Page = "dashboard" | "timeline" | "manual" | "integrations";
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [active, setActive] = useState<"dashboard" | "timeline" | "manual">("dashboard");
+  const [active, setActive] = useState<Page>("dashboard");
 
   useEffect(() => {
     apiRequest<AuthUser>("/api/auth/me")
@@ -46,6 +49,7 @@ function App() {
       {active === "dashboard" && <DashboardPage />}
       {active === "timeline" && <TimelinePage />}
       {active === "manual" && <ManualAddPage />}
+      {active === "integrations" && <IntegrationsPage />}
     </Layout>
   );
 }

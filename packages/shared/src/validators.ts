@@ -77,9 +77,28 @@ export const tmdbSettingsSchema = z.object({
   imageBaseUrl: z.string().url().default("https://image.tmdb.org/t/p"),
 });
 
+export const jellyseerrSettingsSchema = z.object({
+  jellyseerrBaseUrl: z.string().url().nullable().optional(),
+  jellyseerrApiKey: nullableTrimmedString,
+});
+
+export const tmdbSearchSchema = z.object({
+  query: z.string().trim().min(1).max(200),
+  type: z.enum(["movie", "show"]),
+  year: z.coerce.number().int().min(1888).max(2200).nullable().optional(),
+});
+
+export const tmdbImportSchema = z.object({
+  type: z.enum(["movie", "show"]),
+  tmdbId: z.coerce.number().int().positive(),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ManualMediaInput = z.infer<typeof manualMediaSchema>;
 export type ManualWatchEventInput = z.infer<typeof manualWatchEventSchema>;
 export type JellyfinSettingsInput = z.infer<typeof jellyfinSettingsSchema>;
 export type TmdbSettingsInput = z.infer<typeof tmdbSettingsSchema>;
+export type JellyseerrSettingsInput = z.infer<typeof jellyseerrSettingsSchema>;
+export type TmdbSearchInput = z.infer<typeof tmdbSearchSchema>;
+export type TmdbImportInput = z.infer<typeof tmdbImportSchema>;

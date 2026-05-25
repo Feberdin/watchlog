@@ -7,7 +7,7 @@
 
 import { Prisma, type PrismaClient } from "@prisma/client";
 
-const SECRET_KEYS = new Set(["jellyfinApiKey", "tmdbBearerToken"]);
+const SECRET_KEYS = new Set(["jellyfinApiKey", "tmdbBearerToken", "jellyseerrApiKey"]);
 
 export async function getSetting<T extends Record<string, unknown>>(
   prisma: PrismaClient,

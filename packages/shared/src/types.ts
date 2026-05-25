@@ -39,3 +39,23 @@ export type TimelineItem = {
   rewatchIndex: number;
   note: string | null;
 };
+
+export type IntegrationTestResponse = {
+  ok: boolean;
+  service: "jellyfin" | "jellyseerr" | "tmdb";
+  message: string;
+  details?: Record<string, string | number | boolean | null>;
+};
+
+export type TmdbSearchResult = {
+  type: "movie" | "show";
+  tmdbId: number;
+  title: string;
+  originalTitle: string | null;
+  year: number | null;
+  overview: string | null;
+  posterPath: string | null;
+  backdropPath: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+};

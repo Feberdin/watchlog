@@ -29,6 +29,7 @@ import { watchEventRoutes } from "./routes/watchEvents.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { exportRoutes } from "./routes/export.js";
+import { metadataRoutes } from "./routes/metadata.js";
 
 function isAllowedBrowserOrigin(origin: string, env: AppEnv): boolean {
   const configuredOrigins = new Set([
@@ -61,7 +62,7 @@ export async function buildApp(env: AppEnv) {
   const app = fastify({
     logger: {
       level: env.LOG_LEVEL,
-      redact: ["req.headers.authorization", "req.headers.cookie", "body.password", "body.jellyfinApiKey", "body.tmdbBearerToken"],
+      redact: ["req.headers.authorization", "req.headers.cookie", "body.password", "body.jellyfinApiKey", "body.tmdbBearerToken", "body.jellyseerrApiKey"],
     },
   });
 
@@ -116,6 +117,7 @@ export async function buildApp(env: AppEnv) {
     await api.register(dashboardRoutes);
     await api.register(settingsRoutes);
     await api.register(exportRoutes);
+    await api.register(metadataRoutes);
   }, { prefix: "/api" });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
