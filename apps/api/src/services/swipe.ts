@@ -10,6 +10,7 @@ import type { SwipeActionResult, SwipeCandidate } from "@watchlog/shared";
 import { markJellyfinItemPlayed } from "./jellyfinClient.js";
 import { requestJellyseerrMedia } from "./jellyseerrClient.js";
 import { getSetting } from "./settings.js";
+import { getTmdbSwipeRecommendations, type TmdbRecommendation, type TmdbSettingsForClient } from "./tmdbClient.js";
 import { nextRewatchIndex } from "./watchEvents.js";
 
 const jellyfinDefaults = {
@@ -26,7 +27,14 @@ const jellyseerrDefaults = {
   jellyseerrApiKey: null,
 };
 
-function toCandidate(media: Media): SwipeCandidate {
+const tmdbDefaults = {
+  tmdbBearerToken: null,
+  preferredLanguage: "de-DE",
+  fallbackLanguage: "en-US",
+  imageBaseUrl: "https://image.tmdb.org/t/p",
+};
+
+function toCandidate(media: Media, recommendation?: TmdbRecommendation): SwipeCandidate {
   return {
     id: media.id,
     type: media.type as "movie" | "show",
@@ -38,7 +46,83 @@ function toCandidate(media: Media): SwipeCandidate {
     backdropUrl: media.backdropUrl,
     tmdbId: media.tmdbId,
     jellyfinItemId: media.jellyfinItemId,
+    recommendationBucket: recommendation?.recommendationBucket ?? null,
+    voteAverage: recommendation?.voteAverage ?? null,
+    voteCount: recommendation?.voteCount ?? null,
   };
+}
+
+async function upsertRecommendation(prisma: PrismaClient, recommendation: TmdbRecommendation): Promise<Media> {
+  const existing = await prisma.media.findFirst({
+    where: {
+      type: recommendation.type,
+      tmdbId: String(recommendation.tmdbId),
+    },
+  });
+
+  const data = {
+    type: recommendation.type,
+    title: recommendation.title,
+    originalTitle: recommendation.originalTitle,
+    year: recommendation.year,
+    overview: recommendation.overview,
+    tmdbId: String(recommendation.tmdbId),
+    posterPath: recommendation.posterPath,
+    backdropPath: recommendation.backdropPath,
+    posterUrl: recommendation.posterUrl,
+    backdropUrl: recommendation.backdropUrl,
+    metadataSource: "tmdb",
+    metadataLastSyncedAt: new Date(),
+  };
+
+  if (existing) {
+    return prisma.media.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.media.create({ data });
+}
+
+async function hasUserDecisionOrWatch(prisma: PrismaClient, userId: string, mediaId: string): Promise<boolean> {
+  const [watchEvent, swipeDecision] = await Promise.all([
+    prisma.watchEvent.findFirst({ where: { userId, mediaId }, select: { id: true } }),
+    prisma.swipeDecision.findUnique({ where: { userId_mediaId: { userId, mediaId } }, select: { id: true } }),
+  ]);
+
+  return Boolean(watchEvent || swipeDecision);
+}
+
+async function listTmdbSwipeCandidates(prisma: PrismaClient, userId: string, limit: number): Promise<SwipeCandidate[]> {
+  const settings = await getSetting(prisma, "tmdb", tmdbDefaults);
+  if (!settings.tmdbBearerToken) {
+    throw new Error("TMDb Bearer Token fehlt. Bitte in den Integrationen speichern, damit WatchLog Swipe-Vorschlaege laden kann.");
+  }
+
+  const recommendations = await getTmdbSwipeRecommendations(settings as TmdbSettingsForClient);
+  const candidates: SwipeCandidate[] = [];
+  const seenTmdbKeys = new Set<string>();
+
+  for (const recommendation of recommendations) {
+    const key = `${recommendation.type}:${recommendation.tmdbId}`;
+    if (seenTmdbKeys.has(key)) {
+      continue;
+    }
+    seenTmdbKeys.add(key);
+
+    const media = await upsertRecommendation(prisma, recommendation);
+    if (await hasUserDecisionOrWatch(prisma, userId, media.id)) {
+      continue;
+    }
+
+    candidates.push(toCandidate(media, recommendation));
+    if (candidates.length >= limit) {
+      break;
+    }
+  }
+
+  return candidates;
 }
 
 export async function listSwipeCandidates(
@@ -46,7 +130,11 @@ export async function listSwipeCandidates(
   userId: string,
   options: { limit: number; type: "movie" | "show" | "all" },
 ): Promise<SwipeCandidate[]> {
-  const typeFilter: MediaType[] = options.type === "all" ? ["movie", "show"] : [options.type];
+  if (options.type === "all") {
+    return listTmdbSwipeCandidates(prisma, userId, options.limit);
+  }
+
+  const typeFilter: MediaType[] = [options.type];
   const media = await prisma.media.findMany({
     where: {
       type: { in: typeFilter },
@@ -62,7 +150,7 @@ export async function listSwipeCandidates(
     take: options.limit,
   });
 
-  return media.map(toCandidate);
+  return media.map((item) => toCandidate(item));
 }
 
 async function markSeen(prisma: PrismaClient, user: User, media: Media): Promise<Pick<SwipeActionResult, "jellyfinSynced" | "jellyseerrRequested" | "message">> {

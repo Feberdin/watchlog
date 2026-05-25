@@ -30,6 +30,8 @@ type TmdbMovieResult = {
   release_date?: string;
   poster_path?: string | null;
   backdrop_path?: string | null;
+  vote_average?: number;
+  vote_count?: number;
 };
 
 type TmdbShowResult = {
@@ -40,6 +42,8 @@ type TmdbShowResult = {
   first_air_date?: string;
   poster_path?: string | null;
   backdrop_path?: string | null;
+  vote_average?: number;
+  vote_count?: number;
 };
 
 type TmdbMovieDetail = TmdbMovieResult & {
@@ -121,6 +125,14 @@ export type TmdbTvCatalog = {
   imdbId: string | null;
   tvdbId: string | null;
   seasons: TmdbTvSeasonSummary[];
+};
+
+export type TmdbRecommendationBucket = "new" | "classic" | "random";
+
+export type TmdbRecommendation = TmdbSearchResult & {
+  recommendationBucket: TmdbRecommendationBucket;
+  voteAverage: number | null;
+  voteCount: number | null;
 };
 
 function authHeaders(settings: TmdbSettingsForClient) {
@@ -222,6 +234,133 @@ export async function searchTmdb(settings: TmdbSettingsForClient, query: string,
       ? movieToSearchResult(result as TmdbMovieResult, settings.imageBaseUrl)
       : showToSearchResult(result as TmdbShowResult, settings.imageBaseUrl)
   ));
+}
+
+function recommendationFromResult(
+  result: TmdbMovieResult | TmdbShowResult,
+  type: "movie" | "show",
+  bucket: TmdbRecommendationBucket,
+  imageBaseUrl: string,
+): TmdbRecommendation {
+  const normalized = type === "movie"
+    ? movieToSearchResult(result as TmdbMovieResult, imageBaseUrl)
+    : showToSearchResult(result as TmdbShowResult, imageBaseUrl);
+
+  return {
+    ...normalized,
+    recommendationBucket: bucket,
+    voteAverage: typeof result.vote_average === "number" ? result.vote_average : null,
+    voteCount: typeof result.vote_count === "number" ? result.vote_count : null,
+  };
+}
+
+function isoDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function shuffled<T>(values: T[]): T[] {
+  return [...values].sort(() => Math.random() - 0.5);
+}
+
+async function discoverRecommendations(
+  settings: TmdbSettingsForClient,
+  type: "movie" | "show",
+  bucket: TmdbRecommendationBucket,
+  searchParams: Record<string, string | number | undefined>,
+): Promise<TmdbRecommendation[]> {
+  const path = type === "movie" ? "/discover/movie" : "/discover/tv";
+  const response = await tmdbGet<TmdbSearchResponse<TmdbMovieResult | TmdbShowResult>>(path, settings, {
+    language: settings.preferredLanguage,
+    include_adult: "false",
+    include_video: type === "movie" ? "false" : undefined,
+    ...searchParams,
+  });
+
+  return (response.results ?? [])
+    .filter((result) => Boolean(result.poster_path))
+    .map((result) => recommendationFromResult(result, type, bucket, settings.imageBaseUrl));
+}
+
+async function recommendationPool(
+  settings: TmdbSettingsForClient,
+  bucket: TmdbRecommendationBucket,
+  now: Date,
+): Promise<TmdbRecommendation[]> {
+  const recentStart = new Date(now);
+  recentStart.setDate(recentStart.getDate() - 180);
+  const randomPage = 1 + Math.floor(Math.random() * 20);
+
+  if (bucket === "new") {
+    const [movies, shows] = await Promise.all([
+      discoverRecommendations(settings, "movie", bucket, {
+        sort_by: "vote_average.desc",
+        "vote_count.gte": 80,
+        "vote_average.gte": 7,
+        "primary_release_date.gte": isoDateOnly(recentStart),
+        "primary_release_date.lte": isoDateOnly(now),
+        page: 1,
+      }),
+      discoverRecommendations(settings, "show", bucket, {
+        sort_by: "vote_average.desc",
+        "vote_count.gte": 80,
+        "vote_average.gte": 7,
+        "first_air_date.gte": isoDateOnly(recentStart),
+        "first_air_date.lte": isoDateOnly(now),
+        page: 1,
+      }),
+    ]);
+    return shuffled([...movies, ...shows]);
+  }
+
+  if (bucket === "classic") {
+    const [movies, shows] = await Promise.all([
+      discoverRecommendations(settings, "movie", bucket, {
+        sort_by: "vote_average.desc",
+        "vote_count.gte": 700,
+        "vote_average.gte": 7.5,
+        "primary_release_date.lte": "2005-12-31",
+        page: 1,
+      }),
+      discoverRecommendations(settings, "show", bucket, {
+        sort_by: "vote_average.desc",
+        "vote_count.gte": 500,
+        "vote_average.gte": 7.5,
+        "first_air_date.lte": "2005-12-31",
+        page: 1,
+      }),
+    ]);
+    return shuffled([...movies, ...shows]);
+  }
+
+  const [movies, shows] = await Promise.all([
+    discoverRecommendations(settings, "movie", bucket, {
+      sort_by: "popularity.desc",
+      "vote_count.gte": 300,
+      "vote_average.gte": 7,
+      page: randomPage,
+    }),
+    discoverRecommendations(settings, "show", bucket, {
+      sort_by: "popularity.desc",
+      "vote_count.gte": 300,
+      "vote_average.gte": 7,
+      page: randomPage,
+    }),
+  ]);
+  return shuffled([...movies, ...shows]);
+}
+
+export async function getTmdbSwipeRecommendations(settings: TmdbSettingsForClient, now = new Date()): Promise<TmdbRecommendation[]> {
+  const [fresh, classics, random] = await Promise.all([
+    recommendationPool(settings, "new", now),
+    recommendationPool(settings, "classic", now),
+    recommendationPool(settings, "random", now),
+  ]);
+
+  return [
+    ...fresh.slice(0, 10),
+    ...classics.slice(0, 10),
+    ...random.slice(0, 10),
+  ];
 }
 
 export async function getTmdbDetails(settings: TmdbSettingsForClient, type: "movie" | "show", tmdbId: number): Promise<TmdbSearchResult & { runtimeSeconds: number | null; imdbId: string | null }> {

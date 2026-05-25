@@ -139,6 +139,9 @@ export type SwipeCandidate = {
   backdropUrl: string | null;
   tmdbId: string | null;
   jellyfinItemId: string | null;
+  recommendationBucket: "new" | "classic" | "random" | null;
+  voteAverage: number | null;
+  voteCount: number | null;
 };
 
 export type SwipeActionResult = {

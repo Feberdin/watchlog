@@ -23,6 +23,13 @@ function runtimeLabel(seconds: number | null) {
   return `${Math.round(seconds / 60)} Min.`;
 }
 
+function bucketLabel(bucket: SwipeCandidate["recommendationBucket"]) {
+  if (bucket === "new") return "Neu und gut bewertet";
+  if (bucket === "classic") return "Klassiker mit Top-Bewertung";
+  if (bucket === "random") return "Zufallstreffer mit guter Bewertung";
+  return "Vorschlag";
+}
+
 function actionFromDrag(deltaX: number, deltaY: number): SwipeAction | null {
   const horizontal = Math.abs(deltaX);
   const vertical = Math.abs(deltaY);
@@ -153,27 +160,28 @@ export function SwipePage() {
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
             >
-              {current.backdropUrl && <div className="h-36 bg-cover bg-center opacity-80" style={{ backgroundImage: `url(${current.backdropUrl})` }} />}
-              <div className="p-4">
-                <div className="flex gap-4">
-                  <div className="h-40 w-28 shrink-0 overflow-hidden rounded-md bg-slate-800">
-                    {current.posterUrl ? (
-                      <img className="h-full w-full object-cover" src={current.posterUrl} alt="" draggable={false} />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-slate-500">{current.type === "movie" ? "Film" : "Serie"}</div>
-                    )}
+              <div className="relative h-full">
+                {current.posterUrl ? (
+                  <img className="h-full w-full object-cover" src={current.posterUrl} alt="" draggable={false} />
+                ) : current.backdropUrl ? (
+                  <img className="h-full w-full object-cover" src={current.backdropUrl} alt="" draggable={false} />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-slate-800 text-slate-500">{current.type === "movie" ? "Film" : "Serie"}</div>
+                )}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent p-4 pt-28">
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium">
+                    <span className="rounded bg-teal-300 px-2 py-1 text-slate-950">{bucketLabel(current.recommendationBucket)}</span>
+                    <span className="rounded bg-slate-900/90 px-2 py-1 text-slate-200">{current.type === "movie" ? "Film" : "Serie"}</span>
+                    {current.voteAverage && <span className="rounded bg-slate-900/90 px-2 py-1 text-slate-200">TMDb {current.voteAverage.toFixed(1)}</span>}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm uppercase tracking-wide text-teal-300">{current.type === "movie" ? "Film" : "Serie"}</p>
-                    <h2 className="mt-1 text-2xl font-semibold leading-tight">{current.title}</h2>
-                    <p className="mt-2 text-sm text-slate-400">
-                      {[current.year, runtimeLabel(current.runtimeSeconds)].filter(Boolean).join(" · ") || "Keine Laufzeit/Jahr hinterlegt"}
-                    </p>
-                  </div>
+                  <h2 className="text-3xl font-semibold leading-tight drop-shadow">{current.title}</h2>
+                  <p className="mt-2 text-sm text-slate-300">
+                    {[current.year, runtimeLabel(current.runtimeSeconds), current.voteCount ? `${current.voteCount} Stimmen` : null].filter(Boolean).join(" · ") || "Keine Laufzeit/Jahr hinterlegt"}
+                  </p>
+                  <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-200">
+                    {current.overview || "Keine Beschreibung vorhanden."}
+                  </p>
                 </div>
-                <p className="mt-4 line-clamp-[8] text-sm leading-6 text-slate-300">
-                  {current.overview || "Keine Beschreibung vorhanden."}
-                </p>
               </div>
               {previewAction && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/65 text-2xl font-semibold text-white">

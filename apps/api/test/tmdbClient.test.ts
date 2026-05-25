@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildTmdbImageUrl, getTmdbSeasonEpisodes, getTmdbTvCatalog } from "../src/services/tmdbClient.js";
+import { buildTmdbImageUrl, getTmdbSeasonEpisodes, getTmdbSwipeRecommendations, getTmdbTvCatalog } from "../src/services/tmdbClient.js";
 
 describe("buildTmdbImageUrl", () => {
   it("builds a TMDb image URL with a size segment", () => {
@@ -66,5 +66,51 @@ describe("TMDb TV catalog", () => {
     expect(catalog.seasons[0]).toMatchObject({ seasonNumber: 1, startYear: 2016, episodeCount: 8 });
     expect(episodes[0]).toMatchObject({ title: "Kapitel eins", seasonNumber: 1, episodeNumber: 1, year: 2016, runtimeSeconds: 2940 });
     expect(firstUrl.searchParams.get("append_to_response")).toBe("external_ids");
+  });
+});
+
+describe("TMDb swipe recommendations", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("loads ten new, ten classic, and ten random recommendations when TMDb has enough results", async () => {
+    const settings = {
+      tmdbBearerToken: "token",
+      preferredLanguage: "de-DE",
+      fallbackLanguage: "en-US",
+      imageBaseUrl: "https://image.tmdb.org/t/p",
+    };
+    const responseFor = (prefix: string) => ({
+      ok: true,
+      json: async () => ({
+        results: Array.from({ length: 20 }, (_, index) => ({
+          id: Number(`${prefix}${index + 1}`),
+          title: `Movie ${prefix}-${index + 1}`,
+          name: `Show ${prefix}-${index + 1}`,
+          release_date: "2026-01-01",
+          first_air_date: "2026-01-01",
+          poster_path: `/poster-${prefix}-${index + 1}.jpg`,
+          vote_average: 8.1,
+          vote_count: 1200,
+        })),
+      }),
+    } as Response);
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(responseFor("10"))
+      .mockResolvedValueOnce(responseFor("11"))
+      .mockResolvedValueOnce(responseFor("20"))
+      .mockResolvedValueOnce(responseFor("21"))
+      .mockResolvedValueOnce(responseFor("30"))
+      .mockResolvedValueOnce(responseFor("31"));
+
+    const recommendations = await getTmdbSwipeRecommendations(settings, new Date("2026-05-25T00:00:00.000Z"));
+
+    expect(recommendations).toHaveLength(30);
+    expect(recommendations.filter((item) => item.recommendationBucket === "new")).toHaveLength(10);
+    expect(recommendations.filter((item) => item.recommendationBucket === "classic")).toHaveLength(10);
+    expect(recommendations.filter((item) => item.recommendationBucket === "random")).toHaveLength(10);
+    expect(recommendations[0]).toMatchObject({ voteAverage: 8.1, voteCount: 1200 });
   });
 });
