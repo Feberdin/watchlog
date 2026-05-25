@@ -7,6 +7,35 @@
 
 import { z } from "zod";
 
+// Why this exists:
+// Docker Compose injects every environment value as a string. `z.coerce.boolean()`
+// treats any non-empty string, including "false", as true because it follows
+// JavaScript's Boolean() rules. For security flags that would silently enable
+// behavior the operator explicitly disabled.
+const booleanFromEnv = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) {
+      return false;
+    }
+
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "off", ""].includes(normalized)) {
+      return false;
+    }
+
+    throw new Error(`Boolean-Wert '${value}' ist ungueltig. Erlaubt sind true/false, 1/0, yes/no oder on/off.`);
+  });
+
 const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
   APP_URL: z.string().url().default("http://localhost:8111"),
@@ -17,9 +46,9 @@ const envSchema = z.object({
   JELLYFIN_URL: z.string().optional().default(""),
   JELLYFIN_API_KEY: z.string().optional().default(""),
   TMDB_BEARER_TOKEN: z.string().optional().default(""),
-  REGISTRATION_ENABLED: z.coerce.boolean().default(false),
+  REGISTRATION_ENABLED: booleanFromEnv,
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
-  SECURE_COOKIES: z.coerce.boolean().default(false),
+  SECURE_COOKIES: booleanFromEnv,
   TZ: z.string().default("Europe/Berlin"),
 });
 
