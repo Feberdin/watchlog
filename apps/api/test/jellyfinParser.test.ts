@@ -78,4 +78,60 @@ describe("parseJellyfinWebhook", () => {
   it("throws a readable error when required fields are missing", () => {
     expect(() => parseJellyfinWebhook({ item: {}, user: {} })).toThrow(/item.id/);
   });
+
+  it("parses the native Default payload from the Webhooks for Jellyfin plugin", () => {
+    const parsed = parseJellyfinWebhook({
+      Event: "Scrobble",
+      Item: {
+        Id: "episode-1",
+        Type: "Episode",
+        Name: "Meine Rueckkehr",
+        Overview: "Eine Episode.",
+        ProductionYear: 2001,
+        RunTimeTicks: 1_500_000_000,
+        ProviderIds: {
+          Tmdb: "12345",
+          Imdb: "",
+        },
+        SeriesName: "Scrubs",
+        SeriesId: "series-1",
+        ParentIndexNumber: 1,
+        IndexNumber: 1,
+        UserData: {
+          Played: true,
+          LastPlayedDate: "2026-05-26T20:15:00Z",
+        },
+      },
+      Series: {
+        Id: "series-1",
+        Name: "Scrubs",
+      },
+      User: {
+        Id: "jf-user-1",
+        Name: "joachim",
+      },
+      Session: {
+        Id: "session-1",
+        Client: "Jellyfin Web",
+        DeviceName: "Safari",
+        PlayState: {
+          PositionTicks: 1_410_000_000,
+        },
+      },
+    });
+
+    expect(parsed.notificationType).toBe("PlaybackProgress");
+    expect(parsed.itemType).toBe("Episode");
+    expect(parsed.title).toBe("Meine Rueckkehr");
+    expect(parsed.seriesName).toBe("Scrubs");
+    expect(parsed.seriesId).toBe("series-1");
+    expect(parsed.seasonNumber).toBe(1);
+    expect(parsed.episodeNumber).toBe(1);
+    expect(parsed.played).toBe(true);
+    expect(parsed.progressPercent).toBe(94);
+    expect(parsed.tmdbId).toBe("12345");
+    expect(parsed.imdbId).toBeNull();
+    expect(parsed.clientName).toBe("Jellyfin Web");
+    expect(parsed.deviceName).toBe("Safari");
+  });
 });

@@ -7,44 +7,7 @@
 
 import { z } from "zod";
 
-const rawWebhookSchema = z.object({
-  notification_type: z.unknown().optional(),
-  timestamp: z.unknown().optional(),
-  utc_timestamp: z.unknown().optional(),
-  user: z.object({
-    id: z.unknown().optional(),
-    name: z.unknown().optional(),
-  }).optional(),
-  client: z.object({
-    name: z.unknown().optional(),
-    device_name: z.unknown().optional(),
-    device_id: z.unknown().optional(),
-  }).optional(),
-  item: z.object({
-    id: z.unknown().optional(),
-    type: z.unknown().optional(),
-    name: z.unknown().optional(),
-    overview: z.unknown().optional(),
-    year: z.unknown().optional(),
-    runtime_ticks: z.unknown().optional(),
-    tmdb_id: z.unknown().optional(),
-    imdb_id: z.unknown().optional(),
-    tvdb_id: z.unknown().optional(),
-    series_name: z.unknown().optional(),
-    series_id: z.unknown().optional(),
-    season_number: z.unknown().optional(),
-    episode_number: z.unknown().optional(),
-  }).optional(),
-  playback: z.object({
-    position_ticks: z.unknown().optional(),
-    played_to_completion: z.unknown().optional(),
-    played: z.unknown().optional(),
-    play_count: z.unknown().optional(),
-    last_played_date: z.unknown().optional(),
-  }).optional(),
-  session_id: z.unknown().optional(),
-  play_session_id: z.unknown().optional(),
-}).passthrough();
+const rawWebhookSchema = z.object({}).passthrough();
 
 export type NormalizedJellyfinWebhook = {
   notificationType: string;
@@ -103,6 +66,52 @@ function booleanValue(value: unknown): boolean {
   return asText === "true" || asText === "1" || asText === "yes";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function read(source: unknown, ...keys: string[]): unknown {
+  if (!isRecord(source)) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    if (key in source) {
+      return source[key];
+    }
+  }
+
+  return undefined;
+}
+
+function readPath(source: unknown, path: string[]): unknown {
+  return path.reduce<unknown>((current, key) => read(current, key), source);
+}
+
+function firstValue(...values: unknown[]): unknown {
+  return values.find((value) => text(value) != null);
+}
+
+function normalizeNotificationType(value: unknown): string {
+  const asText = text(value) ?? "Unknown";
+  const lowered = asText.toLowerCase();
+
+  if (lowered === "play") {
+    return "PlaybackStart";
+  }
+  if (lowered === "progress" || lowered === "scrobble") {
+    return "PlaybackProgress";
+  }
+  if (lowered === "stop") {
+    return "PlaybackStop";
+  }
+  if (lowered === "markplayed" || lowered === "markunplayed") {
+    return "UserDataSaved";
+  }
+
+  return asText;
+}
+
 function ticksToSeconds(value: unknown): number | null {
   const ticks = numberValue(value);
   if (ticks == null || ticks <= 0) {
@@ -135,10 +144,24 @@ function mediaType(value: unknown): "Movie" | "Episode" | "Other" {
 
 export function parseJellyfinWebhook(input: unknown): NormalizedJellyfinWebhook {
   const payload = rawWebhookSchema.parse(input);
-  const notificationType = text(payload.notification_type) ?? "Unknown";
-  const itemId = text(payload.item?.id);
-  const jellyfinUserId = text(payload.user?.id);
-  const title = text(payload.item?.name);
+  const item = firstValue(read(payload, "item"), read(payload, "Item"));
+  const user = firstValue(read(payload, "user"), read(payload, "User"), read(payload, "Account"));
+  const client = firstValue(read(payload, "client"), read(payload, "Client"));
+  const session = firstValue(read(payload, "session"), read(payload, "Session"), read(payload, "Player"));
+  const playback = firstValue(read(payload, "playback"), read(payload, "Playback"));
+  const series = firstValue(read(payload, "series"), read(payload, "Series"));
+  const providerIds = firstValue(read(item, "ProviderIds", "providerIds"), readPath(item, ["ProviderIds"]), readPath(item, ["providerIds"]));
+  const userData = firstValue(read(item, "UserData", "userData"), readPath(item, ["UserData"]), readPath(item, ["userData"]));
+  const notificationType = normalizeNotificationType(firstValue(
+    read(payload, "notification_type"),
+    read(payload, "notificationType"),
+    read(payload, "NotificationType"),
+    read(payload, "event"),
+    read(payload, "Event"),
+  ));
+  const itemId = text(firstValue(read(item, "id", "Id"), readPath(payload, ["Metadata", "ratingKey"])));
+  const jellyfinUserId = text(read(user, "id", "Id"));
+  const title = text(firstValue(read(item, "name", "Name"), read(item, "title", "Title")));
 
   if (!itemId) {
     throw new Error("Jellyfin webhook enthaelt keine item.id. Bitte Webhook-Template pruefen.");
@@ -150,38 +173,59 @@ export function parseJellyfinWebhook(input: unknown): NormalizedJellyfinWebhook 
     throw new Error("Jellyfin webhook enthaelt keinen item.name. Bitte Webhook-Template pruefen.");
   }
 
-  const runtimeSeconds = ticksToSeconds(payload.item?.runtime_ticks);
-  const positionSeconds = ticksToSeconds(payload.playback?.position_ticks);
+  const runtimeSeconds = ticksToSeconds(firstValue(
+    read(item, "runtime_ticks"),
+    read(item, "runtimeTicks"),
+    read(item, "RunTimeTicks"),
+    read(item, "runTimeTicks"),
+  ));
+  const positionSeconds = ticksToSeconds(firstValue(
+    read(playback, "position_ticks"),
+    read(playback, "positionTicks"),
+    readPath(session, ["PlayState", "PositionTicks"]),
+    readPath(session, ["playState", "positionTicks"]),
+  ));
   const progressPercent = runtimeSeconds && positionSeconds
     ? Math.min(100, Math.round((positionSeconds / runtimeSeconds) * 10_000) / 100)
     : null;
+  const pluginEvent = text(firstValue(read(payload, "Event"), read(payload, "event")))?.toLowerCase();
+  const eventMeansPlayed = pluginEvent === "scrobble" || pluginEvent === "markplayed";
 
   return {
     notificationType,
-    timestamp: parseDate(payload.utc_timestamp ?? payload.timestamp ?? payload.playback?.last_played_date),
+    timestamp: parseDate(firstValue(
+      read(payload, "utc_timestamp"),
+      read(payload, "utcTimestamp"),
+      read(payload, "timestamp"),
+      read(payload, "Timestamp"),
+      read(playback, "last_played_date"),
+      read(playback, "lastPlayedDate"),
+      read(userData, "LastPlayedDate"),
+      read(userData, "lastPlayedDate"),
+    )),
     jellyfinUserId,
-    username: text(payload.user?.name),
+    username: text(read(user, "name", "Name", "username", "Username", "title", "Title")),
     itemId,
-    itemType: mediaType(payload.item?.type),
+    itemType: mediaType(read(item, "type", "Type")),
     title,
-    overview: text(payload.item?.overview),
-    year: numberValue(payload.item?.year),
+    overview: text(read(item, "overview", "Overview")),
+    year: numberValue(firstValue(read(item, "year"), read(item, "Year"), read(item, "productionYear"), read(item, "ProductionYear"))),
     runtimeSeconds,
     positionSeconds,
     progressPercent,
-    playedToCompletion: booleanValue(payload.playback?.played_to_completion),
-    played: booleanValue(payload.playback?.played),
-    tmdbId: text(payload.item?.tmdb_id),
-    imdbId: text(payload.item?.imdb_id),
-    tvdbId: text(payload.item?.tvdb_id),
-    seriesName: text(payload.item?.series_name),
-    seriesId: text(payload.item?.series_id),
-    seasonNumber: numberValue(payload.item?.season_number),
-    episodeNumber: numberValue(payload.item?.episode_number),
-    clientName: text(payload.client?.name),
-    deviceName: text(payload.client?.device_name),
-    sessionId: text(payload.session_id ?? payload.client?.device_id),
-    playSessionId: text(payload.play_session_id),
+    playedToCompletion: booleanValue(firstValue(read(playback, "played_to_completion"), read(playback, "playedToCompletion"))) || eventMeansPlayed,
+    played: booleanValue(firstValue(read(playback, "played"), read(playback, "Played"), read(userData, "Played"), read(userData, "played"))) || eventMeansPlayed,
+    tmdbId: text(firstValue(read(item, "tmdb_id"), read(item, "tmdbId"), read(providerIds, "Tmdb", "tmdb", "TMDb"))),
+    imdbId: text(firstValue(read(item, "imdb_id"), read(item, "imdbId"), read(providerIds, "Imdb", "imdb", "IMDb"))),
+    tvdbId: text(firstValue(read(item, "tvdb_id"), read(item, "tvdbId"), read(providerIds, "Tvdb", "tvdb", "TVDb"))),
+    seriesName: text(firstValue(read(item, "series_name"), read(item, "seriesName", "SeriesName"), read(series, "name", "Name"))),
+    seriesId: text(firstValue(read(item, "series_id"), read(item, "seriesId", "SeriesId"), read(series, "id", "Id"))),
+    seasonNumber: numberValue(firstValue(read(item, "season_number"), read(item, "seasonNumber"), read(item, "ParentIndexNumber", "parentIndexNumber"))),
+    episodeNumber: numberValue(firstValue(read(item, "episode_number"), read(item, "episodeNumber"), read(item, "IndexNumber", "indexNumber"))),
+    clientName: text(firstValue(read(client, "name"), read(session, "Client", "client"), read(session, "title", "Title"))),
+    deviceName: text(firstValue(read(client, "device_name"), read(client, "deviceName"), read(session, "DeviceName", "deviceName"))),
+    sessionId: text(firstValue(read(payload, "session_id"), read(payload, "sessionId"), read(session, "Id", "id"), read(client, "device_id"), read(client, "deviceId"))),
+    playSessionId: text(firstValue(read(payload, "play_session_id"), read(payload, "playSessionId"))),
     rawForHash: payload,
   };
 }

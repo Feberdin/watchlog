@@ -108,24 +108,25 @@ No privileged containers, host networking, or host mounts outside appdata are re
 Configure the Jellyfin Webhook Plugin to send JSON to:
 
 ```text
-http://WATCHLOG_HOST:8111/api/webhooks/jellyfin
+http://WATCHLOG_HOST:8111/api/webhooks/jellyfin?secret=your-secret
 ```
 
-Add header:
+If your webhook plugin supports custom headers, you can use this header instead of the query secret:
 
 ```text
 X-WatchLog-Webhook-Secret: your-secret
 ```
 
-Use the template in [docs/webhook-template.md](docs/webhook-template.md).
+If your plugin only offers `Default`, `Get`, and `Plex`, choose `Default` and enable `Play`, `Progress`, `Stop`, `Scrobble`, and `MarkPlayed`.
+
+If your plugin offers custom templates, use the template in [docs/webhook-template.md](docs/webhook-template.md).
 
 After creating a WatchLog user with Jellyfin UserId `jf-user-1`, this sample should create a WatchEvent:
 
 ```bash
 curl -i \
-  -X POST "http://localhost:8111/api/webhooks/jellyfin" \
+  -X POST "http://localhost:8111/api/webhooks/jellyfin?secret=$WEBHOOK_SECRET" \
   -H "content-type: application/json" \
-  -H "X-WatchLog-Webhook-Secret: $WEBHOOK_SECRET" \
   --data-binary @docs/example-playbackstop-webhook.json
 ```
 
