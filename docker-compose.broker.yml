@@ -1,7 +1,7 @@
-# Purpose: Public Docker Compose stack for normal self-hosted WatchLog installs.
-# Input/Output: Reads `.env`, starts PostgreSQL and WatchLog, and exposes the web UI on APP_PORT.
-# Invariants: No privileged containers, no host network, and no real secrets committed to git.
-# Debugging: Use `docker compose logs -f watchlog` and `curl http://localhost:8111/api/health`.
+# Purpose: GitOps Docker Compose stack for WatchLog on Unraid through a Deployment Broker.
+# Input/Output: The broker resolves secret:// values and starts WatchLog plus PostgreSQL.
+# Invariants: No real secrets in git, no privileged containers, no host network, and no unsafe host mounts.
+# Debugging: Use broker logs/status first, then WatchLog `/api/health`.
 
 services:
   db:
@@ -9,14 +9,14 @@ services:
     container_name: watchlog-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-watchlog}
-      POSTGRES_USER: ${POSTGRES_USER:-watchlog}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: watchlog
+      POSTGRES_USER: watchlog
+      POSTGRES_PASSWORD: secret://WATCHLOG_POSTGRES_PASSWORD
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - watchlog-db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-watchlog} -d ${POSTGRES_DB:-watchlog}"]
+      test: ["CMD-SHELL", "pg_isready -U watchlog -d watchlog"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -31,16 +31,16 @@ services:
         condition: service_healthy
     environment:
       APP_URL: ${APP_URL:-http://localhost:8111}
-      APP_PORT: 8111
+      APP_PORT: ${APP_PORT:-8111}
       TZ: ${TZ:-Europe/Berlin}
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
-      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET in .env}
-      JELLYFIN_URL: ${JELLYFIN_URL:-}
-      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
-      JELLYSEERR_URL: ${JELLYSEERR_URL:-}
-      JELLYSEERR_API_KEY: ${JELLYSEERR_API_KEY:-}
-      TMDB_BEARER_TOKEN: ${TMDB_BEARER_TOKEN:-}
+      DATABASE_URL: secret://WATCHLOG_DATABASE_URL
+      SESSION_SECRET: secret://WATCHLOG_SESSION_SECRET
+      WEBHOOK_SECRET: secret://WATCHLOG_WEBHOOK_SECRET
+      JELLYFIN_URL: secret://WATCHLOG_JELLYFIN_URL
+      JELLYFIN_API_KEY: secret://WATCHLOG_JELLYFIN_API_KEY
+      JELLYSEERR_URL: secret://WATCHLOG_JELLYSEERR_URL
+      JELLYSEERR_API_KEY: secret://WATCHLOG_JELLYSEERR_API_KEY
+      TMDB_BEARER_TOKEN: secret://WATCHLOG_TMDB_BEARER_TOKEN
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SECURE_COOKIES: ${SECURE_COOKIES:-false}

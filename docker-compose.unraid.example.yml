@@ -1,7 +1,7 @@
-# Purpose: Broker-oriented Compose example for Unraid appdata bind mounts.
-# Input/Output: The Deployment Broker resolves secret:// values before starting the stack.
-# Invariants: Do not paste real secrets into git, chat, or issue reports.
-# Debugging: Use broker logs and verify `/mnt/user/appdata/watchlog` permissions.
+# Purpose: Unraid-oriented Compose example using appdata bind mounts and normal .env variables.
+# Input/Output: Reads `.env`, stores PostgreSQL/config/cache under `/mnt/user/appdata/watchlog`.
+# Invariants: Do not paste real secrets into git, chat, issues, or screenshots.
+# Debugging: Use Unraid container logs and verify `/mnt/user/appdata/watchlog` permissions.
 
 services:
   db:
@@ -9,20 +9,21 @@ services:
     container_name: watchlog-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: watchlog
-      POSTGRES_USER: watchlog
-      POSTGRES_PASSWORD: secret://WATCHLOG_POSTGRES_PASSWORD
+      POSTGRES_DB: ${POSTGRES_DB:-watchlog}
+      POSTGRES_USER: ${POSTGRES_USER:-watchlog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - /mnt/user/appdata/watchlog/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U watchlog -d watchlog"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-watchlog} -d ${POSTGRES_DB:-watchlog}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   watchlog:
     build: .
+    pull_policy: build
     container_name: watchlog
     restart: unless-stopped
     depends_on:
@@ -32,15 +33,25 @@ services:
       APP_URL: ${APP_URL:-http://tower.local:8111}
       APP_PORT: 8111
       TZ: ${TZ:-Europe/Berlin}
-      DATABASE_URL: secret://WATCHLOG_DATABASE_URL
-      SESSION_SECRET: secret://WATCHLOG_SESSION_SECRET
-      WEBHOOK_SECRET: secret://WATCHLOG_WEBHOOK_SECRET
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET in .env}
       JELLYFIN_URL: ${JELLYFIN_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYSEERR_URL: ${JELLYSEERR_URL:-}
+      JELLYSEERR_API_KEY: ${JELLYSEERR_API_KEY:-}
+      TMDB_BEARER_TOKEN: ${TMDB_BEARER_TOKEN:-}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      CACHE_DIR: /cache
     ports:
-      - "8111:8111"
+      - "${APP_PORT:-8111}:8111"
     volumes:
       - /mnt/user/appdata/watchlog/config:/config
       - /mnt/user/appdata/watchlog/cache:/cache
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5

@@ -48,3 +48,5 @@ GitOps deployment references these values by name only:
 - `secret://WATCHLOG_JELLYSEERR_URL` optional
 - `secret://WATCHLOG_JELLYSEERR_API_KEY` optional
 - `secret://WATCHLOG_TMDB_BEARER_TOKEN` optional
+
+For public Docker Compose installs, use `.env.example` and normal environment variables instead of `secret://...`. The broker-specific example is `.env.broker.example`, and the broker-specific Compose file is `docker-compose.broker.yml`.

@@ -1,156 +1,333 @@
 # WatchLog
 
-Purpose: WatchLog is a self-hosted watch history logger for Jellyfin users.
-Input/Output: Jellyfin webhooks, manual entries, and later imports become durable WatchEvents in PostgreSQL.
-Invariants: No telemetry, no hidden cloud services, no automatic Jellyfin back-sync.
-Debugging: Start with `/api/health`, then container logs, then database rows.
+Self-hosted watch history for Jellyfin users.
 
-## Features in this MVP
+WatchLog records which movies and TV episodes a Jellyfin user watched, stores the history in its own PostgreSQL database, and provides a local web UI for timeline browsing, manual historical entries, imports/exports, statistics, series progress, and recommendations. It is designed for Unraid, Docker Compose, and normal Linux servers.
 
-- Fastify API with Health, Auth, Jellyfin webhook, Media, WatchEvents, Settings, Dashboard, and CSV/JSON export.
-- PostgreSQL via Prisma.
-- Local auth with Argon2id password hashing and HTTP-only cookie sessions.
-- Secure Jellyfin webhook endpoint with `X-WatchLog-Webhook-Secret` or `?secret=...`.
-- Tolerant webhook parser for missing fields, string booleans, empty strings, and Jellyfin ticks.
-- Duplicate suppression for repeated PlaybackStop events within 30 minutes.
-- Rewatch support through separate WatchEvent rows.
-- React/Vite UI with Login/Setup, Dashboard, Timeline, and manual historical entries.
-- Explicit Jellyfin watched-state import for movies and episodes mapped to the current WatchLog user.
-- Docker Compose and Unraid example.
+No telemetry. No hidden cloud service. No automatic back-sync to Jellyfin.
 
-## Quickstart
+## Status
+
+WatchLog is an early public MVP. The current version is useful for self-hosted testing and personal use, but the API and database model may still change before a stable `1.0` release.
+
+## Features
+
+- Jellyfin webhook receiver with shared-secret authentication.
+- Support for native Jellyfin Webhooks `Default` payloads and template-based webhook payloads.
+- Automatic WatchEvent creation for completed playback, scrobbles, `MarkPlayed`, or threshold-based progress.
+- Duplicate suppression for repeated webhook events in a short window.
+- Separate WatchEvents for rewatches.
+- Jellyfin watched-state import for movies and episodes.
+- Local users with Argon2id password hashing and HTTP-only cookie sessions.
+- User mapping to Jellyfin UserIds.
+- Manual historical watch entries through TMDb search.
+- Imprecise dates: exact datetime, date, month/year, year, or unknown.
+- Timeline with collapsible series groups and statistics.
+- Dashboard with a growing poster collage.
+- Local poster cache as optimized WebP files.
+- Series page with seasons, episodes, progress, and quick manual marking.
+- Swipe/recommendation screen backed by TMDb, with optional Jellyseerr requests.
+- CSV/JSON export and CSV import foundation.
+- PostgreSQL production database through Prisma migrations.
+- Docker Compose, Unraid example, and broker-oriented GitOps compose file.
+
+## Screens and UI
+
+The UI currently includes:
+
+- Login / first-admin setup
+- Dashboard
+- Timeline
+- Series
+- Swipe
+- Manual add
+- Integrations
+
+The interface is intentionally practical rather than marketing-heavy: dark mode, compact controls, poster cards, tables/lists, and clear operational states.
+
+## Quickstart With Docker Compose
+
+Requirements:
+
+- Docker Engine with Compose v2
+- Git
+- A host that can reach Jellyfin if webhooks/imports should work
+
+Clone and configure:
 
 ```bash
-cp .env.template .env
-# For local Docker without the broker, replace secret:// references with local development values.
-docker compose up --build
+git clone https://github.com/Feberdin/watchlog.git
+cd watchlog
+cp .env.example .env
 ```
 
-Open `http://localhost:8111`, switch to `Setup`, and create the first admin user.
+Generate local secrets:
 
-## Local Development
+```bash
+openssl rand -base64 32
+openssl rand -base64 32
+openssl rand -base64 24
+```
+
+Edit `.env`:
+
+- Set `POSTGRES_PASSWORD`.
+- Put the same password into `DATABASE_URL`.
+- Set `SESSION_SECRET`.
+- Set `WEBHOOK_SECRET`.
+- Optionally set `JELLYFIN_URL`, `JELLYFIN_API_KEY`, `JELLYSEERR_URL`, `JELLYSEERR_API_KEY`, and `TMDB_BEARER_TOKEN`.
+
+Start:
+
+```bash
+docker compose up -d --build
+```
+
+Open:
+
+```text
+http://localhost:8111
+```
+
+Create the first admin user. After the first admin exists, registration is closed unless `REGISTRATION_ENABLED=true`.
+
+## Docker Compose Files
+
+| File | Purpose |
+| --- | --- |
+| `docker-compose.yml` | Public standalone install. Uses `.env` values and named Docker volumes. |
+| `docker-compose.unraid.example.yml` | Unraid-oriented example with appdata bind mounts and broker-style secrets. |
+| `docker-compose.broker.yml` | Private GitOps/Broker compose using `secret://...` references. |
+
+Most users should start with `docker-compose.yml`.
+
+## Configuration
+
+| Variable | Required | Example | Notes |
+| --- | --- | --- | --- |
+| `APP_URL` | Yes | `http://localhost:8111` | Public URL used for CORS/cookies. |
+| `APP_PORT` | Yes | `8111` | Host port exposed by Compose. |
+| `TZ` | No | `Europe/Berlin` | Container timezone. |
+| `POSTGRES_DB` | Yes | `watchlog` | PostgreSQL database name. |
+| `POSTGRES_USER` | Yes | `watchlog` | PostgreSQL username. |
+| `POSTGRES_PASSWORD` | Yes | generated value | Must match `DATABASE_URL`. |
+| `DATABASE_URL` | Yes | `postgresql://watchlog:...@db:5432/watchlog` | Prisma connection string. |
+| `SESSION_SECRET` | Yes | generated value | Long random cookie/session secret. |
+| `WEBHOOK_SECRET` | Yes | generated value | Shared secret for Jellyfin webhooks. |
+| `JELLYFIN_URL` | No | `http://192.168.1.10:8096` | Can also be set in UI. |
+| `JELLYFIN_API_KEY` | No | empty | Used for imports and sync actions. |
+| `JELLYSEERR_URL` | No | `http://192.168.1.10:5055` | Used for swipe "want" requests. |
+| `JELLYSEERR_API_KEY` | No | empty | Used only if Jellyseerr is configured. |
+| `TMDB_BEARER_TOKEN` | No | empty | Enables TMDb search, posters, metadata, and recommendations. |
+| `REGISTRATION_ENABLED` | No | `false` | Allows additional registration after first admin. |
+| `LOG_LEVEL` | No | `info` | Use `debug` while integrating. |
+| `SECURE_COOKIES` | No | `false` | Set `true` behind HTTPS. |
+| `CACHE_DIR` | No | `/cache` | Poster WebP cache path inside the container. |
+
+Never commit your real `.env`.
+
+## Jellyfin Setup
+
+WatchLog accepts the webhook secret either as query parameter or header.
+
+Recommended URL:
+
+```text
+http://WATCHLOG_HOST:8111/api/webhooks/jellyfin?secret=YOUR_WEBHOOK_SECRET
+```
+
+If your webhook plugin supports custom headers, this is also supported:
+
+```text
+X-WatchLog-Webhook-Secret: YOUR_WEBHOOK_SECRET
+```
+
+### Webhooks Plugin With `Default`, `Get`, `Plex`
+
+Use:
+
+- Payload format: `Default`
+- Events: `Play`, `Progress`, `Stop`, `Scrobble`, `MarkPlayed`
+- User filter: select the Jellyfin user you want to track, or configure one webhook per user
+
+Do not use `Get`; it does not send enough playback data. `Plex` is intended for Plex-compatible scrobblers, not WatchLog.
+
+### Template-Based Webhook Plugin
+
+Use the JSON template in [docs/webhook-template.md](docs/webhook-template.md).
+
+More setup details are in [docs/jellyfin-setup.md](docs/jellyfin-setup.md).
+
+## First Import From Jellyfin
+
+1. Open `Integrationen`.
+2. Save Jellyfin URL and API key, or provide them through `.env`.
+3. Save the Jellyfin UserId on your WatchLog user.
+4. Run `Gesehene Medien importieren`.
+
+Jellyfin usually exposes the current watched state and latest watched date, not a full historic rewatch list. Future webhooks capture rewatches as separate WatchEvents.
+
+## TMDb And Jellyseerr
+
+TMDb is optional but strongly recommended for:
+
+- manual add search
+- posters/backdrops
+- series catalog completion
+- swipe recommendations
+- trailer links
+
+Jellyseerr is optional and only used when you actively swipe a title to `Will ich`.
+
+WatchLog does not send telemetry to TMDb or Jellyseerr. It only calls the APIs you configure.
+
+## Import And Export
+
+CSV export format:
+
+```csv
+type,title,year,watched_at,date_precision,tmdb_id,imdb_id,jellyfin_item_id,note,rating
+movie,Heat,1995,2018-11-01,date,,tt0113277,,ungefähres Datum,
+movie,Alien,1979,2010,year,,tt0078748,,nur Jahr bekannt,
+```
+
+See [docs/import-export.md](docs/import-export.md).
+
+## Development
+
+Requirements:
+
+- Node.js 20+
+- npm
+- Docker for PostgreSQL, or a local PostgreSQL instance
+
+Install:
 
 ```bash
 npm install
+```
+
+Run PostgreSQL:
+
+```bash
+docker compose up -d db
+```
+
+Run migrations/generate client:
+
+```bash
 npm run prisma:generate
 npm run db:push -w @watchlog/api
+```
+
+Run dev servers:
+
+```bash
 npm run dev
 ```
 
-For local development with PostgreSQL, keep `docker compose up db` running and set `DATABASE_URL` to a local PostgreSQL connection string that matches your local password. Do not commit that value.
-
-## Tests and Quality
+Quality checks:
 
 ```bash
 npm run typecheck
 npm run lint
 npm test
+npm run build
 ```
 
-## Configuration
+## Architecture
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `APP_URL` | `http://localhost:8111` | Public URL used for CORS/cookies |
-| `APP_PORT` | `8111` | Container listen port |
-| `DATABASE_URL` | `secret://WATCHLOG_DATABASE_URL` | Prisma database connection |
-| `POSTGRES_PASSWORD` | `secret://WATCHLOG_POSTGRES_PASSWORD` | PostgreSQL password |
-| `SESSION_SECRET` | `secret://WATCHLOG_SESSION_SECRET` | Cookie/session signing secret |
-| `WEBHOOK_SECRET` | `secret://WATCHLOG_WEBHOOK_SECRET` | Jellyfin webhook shared secret |
-| `JELLYFIN_URL` | `secret://WATCHLOG_JELLYFIN_URL` | Broker-managed Jellyfin server URL, e.g. `http://192.168.57.10:8096` |
-| `JELLYFIN_API_KEY` | `secret://WATCHLOG_JELLYFIN_API_KEY` | Broker-injected Jellyfin API key |
-| `JELLYSEERR_URL` | `secret://WATCHLOG_JELLYSEERR_URL` | Broker-managed Jellyseerr server URL, e.g. `http://192.168.57.10:5055` |
-| `JELLYSEERR_API_KEY` | `secret://WATCHLOG_JELLYSEERR_API_KEY` | Broker-injected Jellyseerr API key |
-| `TMDB_BEARER_TOKEN` | `secret://WATCHLOG_TMDB_BEARER_TOKEN` | Broker-injected TMDb bearer token |
-| `REGISTRATION_ENABLED` | `false` | Allows registration after first admin |
-| `LOG_LEVEL` | `info` | `debug` is useful while integrating Jellyfin |
-| `SECURE_COOKIES` | `false` | Set `true` behind HTTPS |
-
-## Required Secrets
-
-The Unraid Deployment Broker must provide these secrets:
-
-| Secret | Used by | Notes |
-| --- | --- | --- |
-| `WATCHLOG_POSTGRES_PASSWORD` | PostgreSQL | Password for database user `watchlog` |
-| `WATCHLOG_DATABASE_URL` | WatchLog API | Example shape: `postgresql://watchlog:<password>@db:5432/watchlog` |
-| `WATCHLOG_SESSION_SECRET` | WatchLog API | Long random value for HTTP-only sessions |
-| `WATCHLOG_WEBHOOK_SECRET` | WatchLog API | Shared secret for Jellyfin webhook requests |
-
-Integration secrets:
-
-| Secret | Used by | Notes |
-| --- | --- | --- |
-| `WATCHLOG_JELLYFIN_URL` | Jellyfin API client | Server URL including scheme, host, and port |
-| `WATCHLOG_JELLYFIN_API_KEY` | Jellyfin API client | Used for connection test and future library sync |
-| `WATCHLOG_JELLYSEERR_URL` | Jellyseerr API client | Server URL including scheme, host, and port |
-| `WATCHLOG_JELLYSEERR_API_KEY` | Jellyseerr API client | Used for connection test and future request import |
-| `WATCHLOG_TMDB_BEARER_TOKEN` | TMDb metadata | Used for metadata search/import |
-
-Never commit real secret values. In GitOps files, use only `secret://NAME`.
-
-## Deployment über Unraid Deployment Broker
-
-This repository is prepared for broker-based GitOps deployment:
-
-1. Register this repo with the `unraid_deploy` broker.
-2. Ensure the required secrets above exist in the broker secret store.
-3. Run broker scan.
-4. Run `stack_validate`.
-5. Create a deploy plan.
-6. Apply only an approved, valid plan.
-7. Verify container state, deployment status, logs, and `/api/health` through the broker.
-
-No privileged containers, host networking, or host mounts outside appdata are required.
-
-## Jellyfin Webhook
-
-Configure the Jellyfin Webhook Plugin to send JSON to:
+Monorepo layout:
 
 ```text
-http://WATCHLOG_HOST:8111/api/webhooks/jellyfin?secret=your-secret
+apps/api      Fastify API, Prisma, integrations, webhooks
+apps/web      React/Vite UI
+packages/shared  shared validators, constants, and API types
+docs          operator and design documentation
 ```
 
-If your webhook plugin supports custom headers, you can use this header instead of the query secret:
+Primary decisions:
 
-```text
-X-WatchLog-Webhook-Secret: your-secret
-```
+- Fastify keeps the self-hosted API small.
+- Prisma gives explicit migrations and a typed DB boundary.
+- PostgreSQL is the production database.
+- Sessions use HTTP-only cookies and server-side session rows.
+- Secrets are redacted from logs and masked in settings responses.
+- Poster caching is local and limited to known trusted image hosts.
 
-If your plugin only offers `Default`, `Get`, and `Plex`, choose `Default` and enable `Play`, `Progress`, `Stop`, `Scrobble`, and `MarkPlayed`.
+More details are in [docs/architecture.md](docs/architecture.md).
 
-If your plugin offers custom templates, use the template in [docs/webhook-template.md](docs/webhook-template.md).
+## Security
 
-After creating a WatchLog user with Jellyfin UserId `jf-user-1`, this sample should create a WatchEvent:
+Security-sensitive defaults:
 
-```bash
-curl -i \
-  -X POST "http://localhost:8111/api/webhooks/jellyfin?secret=$WEBHOOK_SECRET" \
-  -H "content-type: application/json" \
-  --data-binary @docs/example-playbackstop-webhook.json
-```
+- No telemetry.
+- No hidden external service.
+- No automatic back-sync to Jellyfin.
+- Webhook endpoint requires a secret.
+- Passwords use Argon2id.
+- Sessions are stored server-side and cookies are HTTP-only.
+- Integration tokens are not returned by settings endpoints.
+- Public Compose uses normal environment variables; private broker Compose uses `secret://...` references.
 
-## Jellyfin Watched Import
-
-Jellyfin can provide the current watched state for a user, including movies and episodes marked as played. In WatchLog, open `Integrationen`, save your Jellyfin UserId, then click `Gesehene Medien importieren`.
-
-Important limitation: Jellyfin usually exposes the current played state and the latest played date, not a complete historical rewatch list. Future WatchLog webhooks will capture rewatches as separate events.
+Report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
-- `401 Webhook-Secret ist ungueltig`: header or query secret does not match `WEBHOOK_SECRET`.
-- `Kein WatchLog-Benutzer fuer Jellyfin-UserId gefunden`: add the Jellyfin user ID to the WatchLog account.
-- `Dein WatchLog-Benutzer hat keine Jellyfin-UserId`: open `Integrationen`, copy the matching Jellyfin user ID from your Jellyfin admin/user list, save it, and retry the import.
-- `db: error` in `/api/health`: check `WATCHLOG_DATABASE_URL`, `WATCHLOG_POSTGRES_PASSWORD`, and database container logs through the broker.
-- Login loops: verify `APP_URL`, reverse proxy HTTPS settings, and `SECURE_COOKIES`.
+### `db: error` in `/api/health`
 
-## Security Notes
+Check:
 
-- Secrets are masked in logs and are not returned by settings endpoints.
-- Passwords are stored as Argon2id hashes.
-- Webhook payloads are hashed for debugging instead of storing raw bodies.
-- Back-sync to Jellyfin is planned as manual-only and is not automatic in this MVP.
+```bash
+docker compose logs db
+docker compose logs watchlog
+docker compose exec db pg_isready -U watchlog -d watchlog
+```
+
+Verify that `POSTGRES_PASSWORD` and `DATABASE_URL` use the same password.
+
+### Login works but immediately returns to login
+
+Check:
+
+- `APP_URL` matches the URL you use in the browser.
+- `SECURE_COOKIES=false` for plain HTTP.
+- `SECURE_COOKIES=true` only behind HTTPS.
+
+### Jellyfin webhook returns `401`
+
+The query secret or `X-WatchLog-Webhook-Secret` header does not match `WEBHOOK_SECRET`.
+
+### Webhook arrives but no WatchEvent appears
+
+Common causes:
+
+- Jellyfin UserId is not mapped to the WatchLog user.
+- Event was below the watched threshold.
+- Media type was not Movie/Episode.
+- Duplicate event was suppressed.
+
+### Posters are missing
+
+Run TMDb metadata search/import or Jellyfin sync. The dashboard cache only optimizes poster URLs already known in the database.
+
+## Roadmap
+
+- Webhook diagnostics UI
+- scheduled Jellyfin watched-state sync
+- richer import preview
+- backup/restore UI
+- OIDC / Authentik / Authelia
+- full i18n
+- Trakt import
+- Jellystat / Playback Reporting import
+- calendar view
+- Radarr/Sonarr/Jellyseerr library status
+
+## Contributing
+
+Contributions are welcome, but keep the project self-hosted and understandable. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT for the first public iteration. AGPL-3.0 remains a reasonable future option if the project needs network-copyleft guarantees.
+MIT. See [LICENSE](LICENSE).
