@@ -27,11 +27,7 @@ export const metadataRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/metadata/tmdb/import", async (request, reply) => {
-    const user = request.requireUser();
-    if (user.role !== "admin") {
-      throw app.httpErrors.forbidden("Nur Admins koennen TMDb-Medien importieren.");
-    }
-
+    request.requireUser();
     const input = tmdbImportSchema.parse(request.body);
     const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
     const detail = await getTmdbDetails(settings as TmdbSettingsForClient, input.type, input.tmdbId);

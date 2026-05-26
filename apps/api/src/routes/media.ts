@@ -46,4 +46,58 @@ export const mediaRoutes: FastifyPluginAsync = async (app) => {
     reply.code(201);
     return media;
   });
+
+  app.delete("/media/:id", async (request) => {
+    const user = request.requireUser();
+    const { id } = request.params as { id: string };
+    const media = await app.prisma.media.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            children: true,
+            playbackSessions: true,
+          },
+        },
+      },
+    });
+
+    if (!media) {
+      throw app.httpErrors.notFound("Medium wurde nicht gefunden.");
+    }
+
+    if (media.jellyfinItemId) {
+      throw app.httpErrors.conflict("Jellyfin-verknuepfte Medien koennen nicht geloescht werden. Entferne sie in Jellyfin oder loesche nur einzelne WatchEvents.");
+    }
+
+    if (!["manual", "tmdb"].includes(media.metadataSource ?? "")) {
+      throw app.httpErrors.conflict("Nur manuell oder per TMDb angelegte Medien koennen direkt geloescht werden.");
+    }
+
+    if (media._count.children > 0 || media._count.playbackSessions > 0) {
+      throw app.httpErrors.conflict("Dieses Medium hat abhaengige Serien-/Playback-Daten. Bitte loesche einzelne WatchEvents statt den Titel.");
+    }
+
+    return app.prisma.$transaction(async (tx) => {
+      const deletedWatchEvents = await tx.watchEvent.deleteMany({
+        where: { mediaId: id, userId: user.id },
+      });
+      const remainingWatchEvents = await tx.watchEvent.count({ where: { mediaId: id } });
+
+      if (remainingWatchEvents > 0) {
+        return {
+          deletedMedia: false,
+          deletedWatchEvents: deletedWatchEvents.count,
+          message: "Deine WatchEvents wurden geloescht. Der Titel bleibt bestehen, weil andere Nutzer ihn noch verwenden.",
+        };
+      }
+
+      await tx.media.delete({ where: { id } });
+      return {
+        deletedMedia: true,
+        deletedWatchEvents: deletedWatchEvents.count,
+        message: "Manuell angelegter Titel wurde geloescht.",
+      };
+    });
+  });
 };

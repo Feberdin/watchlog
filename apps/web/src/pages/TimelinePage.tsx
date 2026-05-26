@@ -92,6 +92,13 @@ function groupSortDate(group: TimelineGroup) {
   return group.kind === "movie" ? group.sortDate : group.lastWatchedAt;
 }
 
+function mediaTypeLabel(type: TimelineItem["type"]) {
+  if (type === "movie") return "Film";
+  if (type === "show") return "Serie";
+  if (type === "season") return "Staffel";
+  return "Episode";
+}
+
 function sortGroups(groups: TimelineGroup[], sortMode: SortMode) {
   return [...groups].sort((a, b) => {
     if (sortMode === "title") {
@@ -181,12 +188,12 @@ export function TimelinePage() {
             const item = group.item;
             return (
               <article key={item.id} className="flex gap-4 rounded-lg border border-slate-800 bg-slate-900 p-3">
-                <Poster src={item.posterUrl} icon="movie" />
+                <Poster src={item.posterUrl} icon={item.type === "movie" ? "movie" : "series"} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-medium">{item.title} {item.year ? <span className="text-slate-400">({item.year})</span> : null}</p>
-                      <p className="mt-1 text-sm text-slate-400">Film · Quelle: {item.source} · Rewatch #{item.rewatchIndex}</p>
+                      <p className="mt-1 text-sm text-slate-400">{mediaTypeLabel(item.type)} · Quelle: {item.source} · Rewatch #{item.rewatchIndex}</p>
                     </div>
                     <time className="text-sm text-slate-300">{formatWatchDate(item.watchedAt, item.datePrecision)}</time>
                   </div>
