@@ -7,8 +7,29 @@
 
 import type { FastifyPluginAsync } from "fastify";
 import { manualMediaSchema } from "@watchlog/shared";
+import { getCachedPoster, isCacheablePosterUrl } from "../services/posterCache.js";
 
 export const mediaRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/media/:id/poster.webp", async (request, reply) => {
+    request.requireUser();
+    const { id } = request.params as { id: string };
+    const media = await app.prisma.media.findUnique({ where: { id } });
+
+    if (!media?.posterUrl) {
+      throw app.httpErrors.notFound("Fuer dieses Medium ist kein Poster gespeichert.");
+    }
+
+    if (!isCacheablePosterUrl(media.posterUrl)) {
+      throw app.httpErrors.unprocessableEntity("Dieses Poster stammt nicht aus einer cachebaren Quelle.");
+    }
+
+    const poster = await getCachedPoster(process.env.CACHE_DIR ?? "/cache", media.posterUrl);
+    return reply
+      .type("image/webp")
+      .header("cache-control", "public, max-age=86400")
+      .send(poster);
+  });
+
   app.get("/media", async (request) => {
     request.requireUser();
     return app.prisma.media.findMany({

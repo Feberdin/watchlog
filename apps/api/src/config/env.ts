@@ -51,6 +51,7 @@ const envSchema = z.object({
   REGISTRATION_ENABLED: booleanFromEnv,
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
   SECURE_COOKIES: booleanFromEnv,
+  CACHE_DIR: z.string().min(1).default("/cache"),
   TZ: z.string().default("Europe/Berlin"),
 });
 
