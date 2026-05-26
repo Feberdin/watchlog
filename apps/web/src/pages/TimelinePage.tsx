@@ -6,11 +6,54 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, Film, Search, Tv } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Film, Search, Sparkles, Tv } from "lucide-react";
 import type { TimelineGroup, TimelineItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 
 type SortMode = "latest" | "title" | "type";
+
+type PeriodStats = {
+  total: number;
+  movies: number;
+  series: number;
+  episodes: number;
+  watchtimeSeconds: number;
+};
+
+type TimelineStats = {
+  periods: {
+    week: PeriodStats;
+    month: PeriodStats;
+    year: PeriodStats;
+  };
+  totals: {
+    events: number;
+    watchtimeSeconds: number;
+    rewatches: number;
+    firstWatchedAt: string | null;
+  };
+  weekdays: Array<{ label: string; count: number; watchtimeSeconds: number }>;
+  monthlyTrend: Array<{ label: string; count: number; watchtimeSeconds: number }>;
+  funFacts: {
+    topWeekday: { label: string; count: number; watchtimeSeconds: number } | null;
+    topTitle: { title: string; type: string; count: number; watchtimeSeconds: number } | null;
+    topMonth: { label: string; count: number; watchtimeSeconds: number } | null;
+    averageWatchtimeSeconds: number;
+  };
+};
+
+function formatDuration(seconds: number) {
+  if (!seconds || seconds <= 0) {
+    return "0 h";
+  }
+
+  const hours = seconds / 3600;
+  if (hours < 1) {
+    return `${Math.round(seconds / 60)} min`;
+  }
+
+  return `${hours.toLocaleString("de-DE", { maximumFractionDigits: hours >= 10 ? 0 : 1 })} h`;
+}
 
 function formatWatchDate(value: string | null, precision: string) {
   if (!value) {
@@ -127,15 +170,126 @@ function Poster({ src, icon }: { src: string | null; icon: "movie" | "series" })
   );
 }
 
+function StatCard({ label, stats }: { label: string; stats: PeriodStats }) {
+  return (
+    <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-slate-400">{label}</p>
+          <p className="mt-2 text-3xl font-semibold">{stats.total}</p>
+        </div>
+        <span className="flex h-10 w-10 items-center justify-center rounded-md bg-slate-950 text-teal-300 ring-1 ring-slate-800">
+          <CalendarDays className="h-5 w-5" aria-hidden="true" />
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-400">
+        <span>{stats.movies} Filme</span>
+        <span>{stats.series} Serien</span>
+        <span>{stats.episodes} Folgen</span>
+      </div>
+      <p className="mt-2 flex items-center gap-1 text-sm text-slate-300">
+        <Clock3 className="h-4 w-4 text-slate-500" aria-hidden="true" />
+        {formatDuration(stats.watchtimeSeconds)}
+      </p>
+    </article>
+  );
+}
+
+function BarList({ items, mode }: { items: Array<{ label: string; count: number; watchtimeSeconds: number }>; mode: "count" | "watchtime" }) {
+  const max = Math.max(1, ...items.map((item) => mode === "count" ? item.count : item.watchtimeSeconds));
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => {
+        const value = mode === "count" ? item.count : item.watchtimeSeconds;
+        const width = Math.max(3, Math.round((value / max) * 100));
+        return (
+          <div key={item.label} className="grid grid-cols-[72px_1fr_70px] items-center gap-3 text-sm">
+            <span className="truncate text-slate-400">{item.label}</span>
+            <span className="h-3 overflow-hidden rounded-full bg-slate-800">
+              <span className="block h-full rounded-full bg-teal-300" style={{ width: `${width}%` }} />
+            </span>
+            <span className="text-right text-slate-300">{mode === "count" ? item.count : formatDuration(item.watchtimeSeconds)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TimelineStatsPanel({ stats }: { stats: TimelineStats | null }) {
+  if (!stats) {
+    return <p className="mt-5 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">Statistiken werden geladen...</p>;
+  }
+
+  const funFacts = [
+    stats.funFacts.topWeekday ? `Meiste Watchtime am ${stats.funFacts.topWeekday.label}: ${formatDuration(stats.funFacts.topWeekday.watchtimeSeconds)}.` : null,
+    stats.funFacts.topTitle ? `Am häufigsten in der Timeline: ${stats.funFacts.topTitle.title} (${stats.funFacts.topTitle.count}x).` : null,
+    stats.funFacts.topMonth ? `Aktivster Monat im Trend: ${stats.funFacts.topMonth.label} mit ${stats.funFacts.topMonth.count} Einträgen.` : null,
+    stats.funFacts.averageWatchtimeSeconds ? `Durchschnitt pro Eintrag: ${formatDuration(stats.funFacts.averageWatchtimeSeconds)}.` : null,
+  ].filter(Boolean);
+
+  return (
+    <section className="mt-5 space-y-4">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <StatCard label="Letzte 7 Tage" stats={stats.periods.week} />
+        <StatCard label="Dieser Monat" stats={stats.periods.month} />
+        <StatCard label="Dieses Jahr" stats={stats.periods.year} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-teal-300" aria-hidden="true" />
+            <h2 className="font-semibold">Watchtime nach Wochentag</h2>
+          </div>
+          <BarList items={stats.weekdays} mode="watchtime" />
+        </article>
+
+        <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-teal-300" aria-hidden="true" />
+            <h2 className="font-semibold">Trend der letzten 12 Monate</h2>
+          </div>
+          <BarList items={stats.monthlyTrend} mode="count" />
+        </article>
+      </div>
+
+      <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-teal-300" aria-hidden="true" />
+          <h2 className="font-semibold">Fun Facts</h2>
+        </div>
+        {funFacts.length === 0 ? (
+          <p className="text-sm text-slate-300">Noch nicht genug Daten für belastbare Fun Facts.</p>
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2">
+            {funFacts.map((fact) => (
+              <p key={fact} className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">{fact}</p>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-xs text-slate-500">
+          Gesamt: {stats.totals.events} Einträge, {formatDuration(stats.totals.watchtimeSeconds)} Watchtime, {stats.totals.rewatches} Rewatches.
+        </p>
+      </article>
+    </section>
+  );
+}
+
 export function TimelinePage() {
   const [items, setItems] = useState<TimelineItem[]>([]);
+  const [stats, setStats] = useState<TimelineStats | null>(null);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("latest");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiRequest<TimelineItem[]>("/api/watch-events").then(setItems).catch((caught) => {
+    Promise.all([
+      apiRequest<TimelineItem[]>("/api/watch-events").then(setItems),
+      apiRequest<TimelineStats>("/api/watch-events/stats").then(setStats),
+    ]).catch((caught) => {
       setError(caught instanceof Error ? caught.message : "Timeline konnte nicht geladen werden.");
     });
   }, []);
@@ -179,6 +333,8 @@ export function TimelinePage() {
       </div>
 
       {error && <p className="mt-4 rounded-md border border-red-500/40 bg-red-950 p-4 text-red-100">{error}</p>}
+
+      <TimelineStatsPanel stats={stats} />
 
       <div className="mt-5 space-y-3">
         {filteredGroups.length === 0 ? (
