@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "npm run dev -w @watchlog/api & npm run dev -w @watchlog/web",
     "build": "npm run build -w @watchlog/shared && npm run build -w @watchlog/web && npm run build -w @watchlog/api",
-    "typecheck": "npm run build -w @watchlog/shared && npm run typecheck -w @watchlog/api && npm run typecheck -w @watchlog/web",
+    "typecheck": "npm run build -w @watchlog/shared && npm run prisma:generate && npm run typecheck -w @watchlog/api && npm run typecheck -w @watchlog/web",
     "lint": "npm run lint -w @watchlog/shared && npm run lint -w @watchlog/api && npm run lint -w @watchlog/web",
     "test": "npm run build -w @watchlog/shared && npm run test -w @watchlog/api && npm run test -w @watchlog/web && npm run test -w @watchlog/shared",
     "prisma:generate": "npm run prisma:generate -w @watchlog/api",
