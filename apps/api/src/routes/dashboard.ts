@@ -46,7 +46,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         },
         include: { media: true },
         orderBy: [{ createdAt: "desc" }],
-        take: 80,
+        take: 5000,
       }),
       app.prisma.media.findMany({
         where: {
@@ -181,8 +181,7 @@ function buildDashboardCollage(
   });
 
   return [...movies, ...completedSeasons]
-    .sort((left, right) => Date.parse(right.addedAt) - Date.parse(left.addedAt))
-    .slice(0, 48);
+    .sort((left, right) => Date.parse(right.addedAt) - Date.parse(left.addedAt));
 }
 
 function firstKnownYear(episodes: Array<{ year: number | null }>) {

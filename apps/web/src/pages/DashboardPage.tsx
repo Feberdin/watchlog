@@ -106,7 +106,7 @@ export function DashboardPage() {
   }
 
   const denseCollage = data.collage.length >= 18;
-  const visiblePosters = data.collage.slice(0, data.collage.length >= 30 ? 40 : 24);
+  const visiblePosters = data.collage;
 
   return (
     <section>
@@ -144,7 +144,7 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3">
           <div>
             <h2 className="font-semibold">Poster-Kollage</h2>
-            <p className="mt-1 text-sm text-slate-400">Gezeigte Titel sind gesehene Filme und vollständig gesehene Staffeln, damit Episoden die Wand nicht überfüllen.</p>
+            <p className="mt-1 text-sm text-slate-400">Gezeigt werden alle gesehenen Filme und vollständig gesehene Staffeln, damit die Wand mit deiner Sammlung weiterwächst.</p>
           </div>
         </div>
         {visiblePosters.length === 0 ? (

@@ -475,7 +475,7 @@ export async function getTmdbCinemaMemoryMovies(
       const rightScore = (right.vote_count ?? 0) * Math.max(right.vote_average ?? 0, 1);
       return rightScore - leftScore;
     })
-    .slice(0, options.limit)
+    .slice(0, options.limit * 5)
     .map((movie) => ({
       ...movieToSearchResult(movie, settings.imageBaseUrl),
       voteAverage: typeof movie.vote_average === "number" ? movie.vote_average : null,
