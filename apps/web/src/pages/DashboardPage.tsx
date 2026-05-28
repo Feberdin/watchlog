@@ -43,6 +43,7 @@ function formatDate(value: string | null) {
 
 function typeLabel(type: string) {
   if (type === "movie") return "Film";
+  if (type === "season") return "Staffel";
   if (type === "episode") return "Episode";
   if (type === "show") return "Serie";
   return "Medium";
@@ -106,7 +107,7 @@ export function DashboardPage() {
           <p className="mt-1 text-sm text-slate-400">Deine gesehene Sammlung wächst als Poster-Kollage mit.</p>
         </div>
         <p className="rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300">
-          {data.collage.length} Titel mit Poster
+          {data.collage.length} Filme/Staffeln
         </p>
       </div>
 
@@ -134,7 +135,7 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3">
           <div>
             <h2 className="font-semibold">Poster-Kollage</h2>
-            <p className="mt-1 text-sm text-slate-400">Neue gesehene Titel werden vorne ergänzt; je mehr Poster vorhanden sind, desto dichter wird die Wand.</p>
+            <p className="mt-1 text-sm text-slate-400">Gezeigte Titel sind gesehene Filme und vollständig gesehene Staffeln, damit Episoden die Wand nicht überfüllen.</p>
           </div>
         </div>
         {visiblePosters.length === 0 ? (
