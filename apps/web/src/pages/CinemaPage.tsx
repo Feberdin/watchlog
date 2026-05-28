@@ -34,16 +34,17 @@ export function CinemaPage() {
   const [startAge, setStartAge] = useState("10");
   const [endAge, setEndAge] = useState("24");
   const [items, setItems] = useState<CinemaMemoryCandidate[]>([]);
+  const [archivedItems, setArchivedItems] = useState<CinemaMemoryCandidate[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const summary = useMemo(() => ({
-    seen: items.filter((item) => item.status === "seen").length,
-    want: items.filter((item) => item.status === "want").length,
-    skip: items.filter((item) => item.status === "skip").length,
-    open: items.filter((item) => item.status === "open").length,
-  }), [items]);
+    remaining: items.length,
+    seen: archivedItems.filter((item) => item.status === "seen").length,
+    want: archivedItems.filter((item) => item.status === "want").length,
+    skip: archivedItems.filter((item) => item.status === "skip").length,
+  }), [items, archivedItems]);
 
   async function loadCandidates() {
     setLoading(true);
@@ -57,7 +58,8 @@ export function CinemaPage() {
       });
       const loaded = await apiRequest<CinemaMemoryCandidate[]>(`/api/cinema/candidates?${params.toString()}`);
       setItems(loaded);
-      setStatus(`${loaded.length} Kino-Kandidaten geladen.`);
+      setArchivedItems([]);
+      setStatus(`${loaded.length} offene Kino-Kandidaten geladen. Bereits einsortierte Filme werden ausgeblendet.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Kino-Liste konnte nicht geladen werden.");
     } finally {
@@ -73,9 +75,9 @@ export function CinemaPage() {
         method: "POST",
         body: JSON.stringify({ mediaId: item.id, action }),
       });
-      setItems((current) => current.map((candidate) => (
-        candidate.id === item.id ? { ...candidate, status: action } : candidate
-      )));
+      const archived = { ...item, status: action };
+      setItems((current) => current.filter((candidate) => candidate.id !== item.id));
+      setArchivedItems((current) => [archived, ...current]);
       setStatus(`${item.title}: ${result.message}`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Aktion konnte nicht gespeichert werden.");
@@ -117,10 +119,10 @@ export function CinemaPage() {
 
       {items.length > 0 && (
         <div className="mt-5 grid gap-3 sm:grid-cols-4">
-          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.open}</span> offen</p>
-          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.seen}</span> gesehen</p>
-          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.want}</span> will ich sehen</p>
-          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.skip}</span> archiviert</p>
+          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.remaining}</span> offen</p>
+          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.seen}</span> gerade gesehen</p>
+          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.want}</span> gerade gewünscht</p>
+          <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.skip}</span> gerade archiviert</p>
         </div>
       )}
 
@@ -173,6 +175,24 @@ export function CinemaPage() {
           </div>
         )}
       </section>
+
+      {archivedItems.length > 0 && (
+        <section className="mt-5 rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <h2 className="text-lg font-semibold">Gerade einsortiert</h2>
+          <p className="mt-1 text-sm text-slate-400">Diese Filme wurden aus der offenen Liste entfernt. Beim naechsten Laden erscheinen sie nicht mehr als Kandidaten.</p>
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {archivedItems.map((item) => (
+              <article key={`${item.id}-${item.status}`} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
+                <Poster src={item.posterUrl} />
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate font-medium">{item.title}</h3>
+                  <p className="text-sm text-slate-400">{item.year ?? "ohne Jahr"} · {actionLabel(item.status)}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </section>
   );
 }

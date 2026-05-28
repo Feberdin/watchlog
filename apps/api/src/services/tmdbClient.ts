@@ -447,7 +447,7 @@ export async function getTmdbCinemaMemoryMovies(
   const startYear = options.birthYear + options.startAge;
   const endYear = options.birthYear + options.endAge;
   const years = Array.from({ length: endYear - startYear + 1 }, (_, index) => startYear + index);
-  const pagesPerYear = Math.ceil(options.limit / Math.max(years.length, 1));
+  const pagesPerYear = Math.min(3, Math.ceil((options.limit * 2) / Math.max(years.length, 1)));
   const responses = await Promise.all(years.flatMap((year) => (
     Array.from({ length: pagesPerYear }, (_, index) => tmdbGet<TmdbSearchResponse<TmdbMovieResult>>("/discover/movie", settings, {
       language: settings.preferredLanguage,

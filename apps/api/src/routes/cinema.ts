@@ -46,6 +46,12 @@ async function upsertCinemaMovie(prisma: PrismaClient, movie: TmdbCinemaMemoryMo
     : prisma.media.create({ data });
 }
 
+async function findExistingMovie(prisma: PrismaClient, movie: TmdbCinemaMemoryMovie) {
+  return prisma.media.findFirst({
+    where: { type: "movie", tmdbId: String(movie.tmdbId) },
+  });
+}
+
 async function classifyStatus(prisma: PrismaClient, userId: string, mediaId: string): Promise<CinemaMemoryCandidate["status"]> {
   const [watchEvent, decision] = await Promise.all([
     prisma.watchEvent.findFirst({ where: { userId, mediaId }, select: { id: true } }),
@@ -113,7 +119,17 @@ export const cinemaRoutes: FastifyPluginAsync = async (app) => {
     const movies = await getTmdbCinemaMemoryMovies(settings as TmdbSettingsForClient, input);
     const candidates: CinemaMemoryCandidate[] = [];
     for (const movie of movies) {
-      const media = await upsertCinemaMovie(app.prisma, movie);
+      const existingMedia = await findExistingMovie(app.prisma, movie);
+      if (existingMedia && await classifyStatus(app.prisma, user.id, existingMedia.id) !== "open") {
+        continue;
+      }
+
+      const media = existingMedia ?? await upsertCinemaMovie(app.prisma, movie);
+      const status = await classifyStatus(app.prisma, user.id, media.id);
+      if (status !== "open") {
+        continue;
+      }
+
       candidates.push({
         id: media.id,
         title: media.title,
@@ -121,10 +137,13 @@ export const cinemaRoutes: FastifyPluginAsync = async (app) => {
         overview: media.overview,
         posterUrl: media.posterUrl,
         tmdbId: media.tmdbId,
-        status: await classifyStatus(app.prisma, user.id, media.id),
+        status,
         voteAverage: movie.voteAverage,
         voteCount: movie.voteCount,
       });
+      if (candidates.length >= input.limit) {
+        break;
+      }
     }
     return candidates;
   });
