@@ -6,9 +6,10 @@
  */
 
 import { useMemo, useState } from "react";
-import { Check, Download, Film, Search, X } from "lucide-react";
+import { Check, Download, Search, X } from "lucide-react";
 import type { CinemaMemoryCandidate, SwipeActionResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 type Action = "seen" | "want" | "skip";
 
@@ -17,16 +18,6 @@ function actionLabel(status: CinemaMemoryCandidate["status"]) {
   if (status === "want") return "will ich sehen";
   if (status === "skip") return "archiviert";
   return "offen";
-}
-
-function Poster({ src }: { src: string | null }) {
-  return src ? (
-    <img className="h-20 w-14 rounded object-cover ring-1 ring-slate-800" src={src} alt="" loading="lazy" />
-  ) : (
-    <div className="flex h-20 w-14 items-center justify-center rounded bg-slate-800 ring-1 ring-slate-700">
-      <Film className="h-5 w-5 text-slate-500" aria-hidden="true" />
-    </div>
-  );
 }
 
 export function CinemaPage() {
@@ -145,7 +136,19 @@ export function CinemaPage() {
               <tbody className="divide-y divide-slate-800">
                 {items.map((item) => (
                   <tr key={item.id} className="align-top">
-                    <td className="px-4 py-3"><Poster src={item.posterUrl} /></td>
+                    <td className="px-4 py-3">
+                      <PosterPreview
+                        src={item.posterUrl}
+                        title={item.title}
+                        kind="movie"
+                        className="h-20 w-14"
+                        typeLabel="Film"
+                        year={item.year}
+                        meta={[item.tmdbId ? `TMDb ${item.tmdbId}` : null, item.voteAverage ? `${item.voteAverage.toFixed(1)}/10` : null, actionLabel(item.status)]}
+                        overview={item.overview}
+                        imageClassName="rounded"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <h2 className="font-medium">{item.title}</h2>
                       <p className="mt-1 text-slate-400">{item.year ?? "ohne Jahr"} · TMDb {item.tmdbId ?? "-"}{item.voteAverage ? ` · ${item.voteAverage.toFixed(1)}/10` : ""}</p>
@@ -183,7 +186,17 @@ export function CinemaPage() {
           <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {archivedItems.map((item) => (
               <article key={`${item.id}-${item.status}`} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
-                <Poster src={item.posterUrl} />
+                <PosterPreview
+                  src={item.posterUrl}
+                  title={item.title}
+                  kind="movie"
+                  className="h-20 w-14"
+                  typeLabel="Film"
+                  year={item.year}
+                  meta={[actionLabel(item.status), item.tmdbId ? `TMDb ${item.tmdbId}` : null]}
+                  overview={item.overview}
+                  imageClassName="rounded"
+                />
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate font-medium">{item.title}</h3>
                   <p className="text-sm text-slate-400">{item.year ?? "ohne Jahr"} · {actionLabel(item.status)}</p>

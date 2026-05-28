@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Clapperboard, Film, Repeat2, Tv } from "lucide-react";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 type DashboardPoster = {
   id: string;
@@ -48,27 +49,30 @@ function PosterTile({ item, index, dense }: { item: DashboardPoster; index: numb
   const sizeClass = dense
     ? index % 11 === 0 ? "col-span-2 row-span-2" : "col-span-1 row-span-1"
     : index % 7 === 0 ? "col-span-2 row-span-2" : "col-span-1 row-span-1";
+  const label = typeLabel(item.type);
+  const seasonBadge = item.type === "season" && item.seasonNumber !== null ? (
+    <span className="pointer-events-none absolute right-2 top-2 z-10 flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-950/55 px-2 text-lg font-black text-white/85 ring-1 ring-white/15">
+      {item.seasonNumber}
+    </span>
+  ) : null;
 
   return (
     <article className={`group relative min-h-24 overflow-hidden rounded-md border border-slate-800 bg-slate-900 ${sizeClass}`}>
-      {item.posterUrl ? (
-        <img className="h-full w-full object-cover transition duration-300 group-hover:scale-105" src={item.posterUrl} alt="" loading="lazy" />
-      ) : (
-        <div className="flex h-full min-h-32 items-center justify-center bg-slate-800">
-          <Film className="h-8 w-8 text-slate-500" aria-hidden="true" />
-        </div>
-      )}
+      <PosterPreview
+        src={item.posterUrl}
+        title={item.title}
+        kind={item.type === "movie" ? "movie" : "series"}
+        className="h-full w-full"
+        typeLabel={label}
+        year={item.year}
+        meta={item.seasonNumber !== null ? [`Staffel ${item.seasonNumber}`] : []}
+        badge={seasonBadge}
+        imageClassName="rounded-none transition duration-300 group-hover:scale-105"
+      />
       <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
         <h3 className="line-clamp-2 text-sm font-medium">{item.title}</h3>
-        <p className="mt-1 text-xs text-slate-300">{item.year ?? "ohne Jahr"} · {typeLabel(item.type)}</p>
+        <p className="mt-1 text-xs text-slate-300">{item.year ?? "ohne Jahr"} · {label}</p>
       </div>
-      {item.type === "season" && item.seasonNumber !== null && (
-        <div className="pointer-events-none absolute right-2 top-2 z-10">
-          <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-950/55 px-2 text-lg font-black text-white/85 ring-1 ring-white/15">
-            {item.seasonNumber}
-          </span>
-        </div>
-      )}
     </article>
   );
 }

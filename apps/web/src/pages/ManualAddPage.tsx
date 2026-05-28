@@ -6,9 +6,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Film, RefreshCw, Search, Trash2, Tv, Upload } from "lucide-react";
+import { CheckCircle2, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 import type { TmdbSearchResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 type DatePrecision = "exact" | "date" | "month" | "year" | "unknown";
 
@@ -59,17 +60,6 @@ function defaultWatchedAtFor(result: TmdbSearchResult, precision: DatePrecision,
   }
 
   return precision === "year" && result.year ? String(result.year) : null;
-}
-
-function Poster({ src, type }: { src: string | null; type: "movie" | "show" }) {
-  const Icon = type === "movie" ? Film : Tv;
-  return src ? (
-    <img className="h-32 w-20 shrink-0 rounded-md object-cover ring-1 ring-slate-800" src={src} alt="" loading="lazy" />
-  ) : (
-    <div className="flex h-32 w-20 shrink-0 items-center justify-center rounded-md bg-slate-800 ring-1 ring-slate-700">
-      <Icon className="h-8 w-8 text-slate-500" aria-hidden="true" />
-    </div>
-  );
 }
 
 export function ManualAddPage() {
@@ -316,7 +306,16 @@ export function ManualAddPage() {
                   key={`${result.type}-${result.tmdbId}`}
                   className={`flex gap-3 rounded-md border p-3 text-left transition ${active ? "border-teal-300 bg-teal-950/40" : "border-slate-800 bg-slate-950 hover:border-slate-600"}`}
                 >
-                  <Poster src={result.posterUrl} type={result.type} />
+                  <PosterPreview
+                    src={result.posterUrl}
+                    title={result.title}
+                    kind={result.type === "movie" ? "movie" : "series"}
+                    className="h-32 w-20"
+                    typeLabel={mediaLabel(result.type)}
+                    year={result.year}
+                    meta={[`TMDb ${result.tmdbId}`]}
+                    overview={result.overview}
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-3">
                       <span>
@@ -421,7 +420,15 @@ export function ManualAddPage() {
             <p className="rounded-md border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">Keine manuell löschbaren Titel vorhanden.</p>
           ) : deletableMedia.map((item) => (
             <article key={item.id} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
-              <Poster src={item.posterUrl} type={item.type === "movie" ? "movie" : "show"} />
+              <PosterPreview
+                src={item.posterUrl}
+                title={item.title}
+                kind={item.type === "movie" ? "movie" : "series"}
+                className="h-32 w-20"
+                typeLabel={mediaLabel(item.type)}
+                year={item.year}
+                meta={[item.tmdbId ? `TMDb ${item.tmdbId}` : item.metadataSource]}
+              />
               <div className="min-w-0 flex-1">
                 <h3 className="truncate font-medium">{item.title}</h3>
                 <p className="text-sm text-slate-400">{mediaLabel(item.type)} · {item.year ?? "ohne Jahr"} · {item.tmdbId ? `TMDb ${item.tmdbId}` : item.metadataSource}</p>
@@ -459,7 +466,15 @@ export function ManualAddPage() {
             <p className="rounded-md border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">Keine Filme oder Serien ohne Poster gefunden.</p>
           ) : missingPosters.map((item) => (
             <article key={item.id} className="flex flex-wrap items-center gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
-              <Poster src={item.posterUrl} type={item.type === "movie" ? "movie" : "show"} />
+              <PosterPreview
+                src={item.posterUrl}
+                title={item.title}
+                kind={item.type === "movie" ? "movie" : "series"}
+                className="h-32 w-20"
+                typeLabel={mediaLabel(item.type)}
+                year={item.year}
+                meta={[item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"]}
+              />
               <div className="min-w-48 flex-1">
                 <h3 className="truncate font-medium">{item.title}</h3>
                 <p className="text-sm text-slate-400">{mediaLabel(item.type)} · {item.year ?? "ohne Jahr"} · {item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"}</p>

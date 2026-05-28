@@ -9,6 +9,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, Check, EyeOff, Play, RotateCcw } from "l
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SwipeActionResult, SwipeCandidate, SwipeHistoryItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 type SwipeAction = "seen" | "skip" | "want";
 
@@ -284,9 +285,16 @@ export function SwipePage() {
           {history.length === 0 && <p className="text-sm text-slate-400">Noch keine Swipe-Entscheidungen.</p>}
           {history.slice(0, 20).map((item) => (
             <div key={item.decisionId} className="flex gap-3 rounded-md border border-slate-800 bg-slate-950 p-2">
-              <div className="h-20 w-14 shrink-0 overflow-hidden rounded bg-slate-800">
-                {item.posterUrl && <img className="h-full w-full object-cover" src={item.posterUrl} alt="" />}
-              </div>
+              <PosterPreview
+                src={item.posterUrl}
+                title={item.title}
+                kind={item.type === "movie" ? "movie" : "series"}
+                className="h-20 w-14"
+                typeLabel={item.type === "movie" ? "Film" : "Serie"}
+                year={item.year}
+                meta={[actionText[item.action], item.tmdbId ? `TMDb ${item.tmdbId}` : null]}
+                imageClassName="rounded"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{item.title}</p>
                 <p className="text-xs text-slate-400">

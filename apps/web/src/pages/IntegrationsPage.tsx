@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import type { AuthUser, IntegrationTestResponse, JellyfinWatchedImportResult, TmdbSearchResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 type JellyfinSettings = {
   jellyfinBaseUrl: string | null;
@@ -277,7 +278,17 @@ export function IntegrationsPage({ user, onUserUpdated }: IntegrationsPageProps)
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {results.map((result) => (
             <article key={`${result.type}-${result.tmdbId}`} className="flex gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
-              {result.posterUrl ? <img className="h-28 w-20 rounded object-cover" src={result.posterUrl} alt="" /> : <div className="h-28 w-20 rounded bg-slate-800" />}
+              <PosterPreview
+                src={result.posterUrl}
+                title={result.title}
+                kind={result.type === "movie" ? "movie" : "series"}
+                className="h-28 w-20"
+                typeLabel={result.type === "movie" ? "Film" : "Serie"}
+                year={result.year}
+                meta={[`TMDb ${result.tmdbId}`]}
+                overview={result.overview}
+                imageClassName="rounded"
+              />
               <div className="min-w-0 flex-1">
                 <h3 className="font-medium">{result.title}</h3>
                 <p className="text-sm text-slate-400">{result.year ?? "ohne Jahr"} · TMDb {result.tmdbId}</p>

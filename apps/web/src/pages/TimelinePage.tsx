@@ -6,9 +6,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Film, Search, Sparkles, Tv } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Search, Sparkles } from "lucide-react";
 import type { TimelineGroup, TimelineItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 type SortMode = "latest" | "title" | "type";
 
@@ -186,17 +187,6 @@ function sortGroups(groups: TimelineGroup[], sortMode: SortMode) {
     const right = groupSortDate(b) ? new Date(groupSortDate(b)!).getTime() : 0;
     return right - left;
   });
-}
-
-function Poster({ src, icon }: { src: string | null; icon: "movie" | "series" }) {
-  const Icon = icon === "movie" ? Film : Tv;
-  return src ? (
-    <img className="h-24 w-16 shrink-0 rounded-md object-cover ring-1 ring-slate-800" src={src} alt="" loading="lazy" />
-  ) : (
-    <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-md bg-slate-800 ring-1 ring-slate-700">
-      <Icon className="h-7 w-7 text-slate-500" aria-hidden="true" />
-    </div>
-  );
 }
 
 function StatCard({ label, stats }: { label: string; stats: PeriodStats }) {
@@ -421,7 +411,16 @@ export function TimelinePage() {
             const item = group.item;
             return (
               <article key={item.id} className="flex gap-4 rounded-lg border border-slate-800 bg-slate-900 p-3">
-                <Poster src={item.posterUrl} icon={item.type === "movie" ? "movie" : "series"} />
+                <PosterPreview
+                  src={item.posterUrl}
+                  title={item.title}
+                  kind={item.type === "movie" ? "movie" : "series"}
+                  className="h-24 w-16"
+                  typeLabel={mediaTypeLabel(item.type)}
+                  year={item.year}
+                  meta={[`Quelle: ${item.source}`, `Rewatch #${item.rewatchIndex}`, formatWatchDate(item.watchedAt, item.datePrecision)]}
+                  overview={item.note}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -444,7 +443,19 @@ export function TimelinePage() {
                 className="flex w-full gap-4 p-3 text-left hover:bg-slate-800/60"
                 onClick={() => setExpanded((current) => ({ ...current, [group.seriesId]: !open }))}
               >
-                <Poster src={group.posterUrl} icon="series" />
+                <PosterPreview
+                  src={group.posterUrl}
+                  title={group.seriesTitle}
+                  kind="series"
+                  className="h-24 w-16"
+                  typeLabel="Serie"
+                  meta={[
+                    `${group.watchedEpisodes} Episode${group.watchedEpisodes === 1 ? "" : "n"} gesehen`,
+                    group.totalEpisodes ? `${group.totalEpisodes} Episoden gesamt` : null,
+                    formatWatchDate(group.lastWatchedAt, "unknown"),
+                  ]}
+                  focusable={false}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">

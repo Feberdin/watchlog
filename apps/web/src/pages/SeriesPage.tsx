@@ -6,9 +6,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, RefreshCw, Search, Tv } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, RefreshCw, Search } from "lucide-react";
 import type { SeriesCatalogItem, SeriesEpisode, SeriesSeason } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
+import { PosterPreview } from "../components/PosterPreview";
 
 const SHOW_SPECIALS_STORAGE_KEY = "watchlog.showSpecials";
 
@@ -148,11 +149,15 @@ export function SeriesPage() {
           return (
             <article key={item.id} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
               <div className="flex gap-4 p-3">
-                {item.posterUrl ? <img className="h-28 w-20 rounded-md object-cover ring-1 ring-slate-800" src={item.posterUrl} alt="" /> : (
-                  <div className="flex h-28 w-20 items-center justify-center rounded-md bg-slate-800 ring-1 ring-slate-700">
-                    <Tv className="h-7 w-7 text-slate-500" aria-hidden="true" />
-                  </div>
-                )}
+                <PosterPreview
+                  src={item.posterUrl}
+                  title={item.title}
+                  kind="series"
+                  className="h-28 w-20"
+                  typeLabel="Serie"
+                  year={item.startYear}
+                  meta={[`${item.watchedEpisodes} / ${item.totalEpisodes} Episoden`, item.complete ? "komplett gesehen" : "offen"]}
+                />
                 <div className="min-w-0 flex-1">
                   <button className="flex min-w-0 items-center gap-2 text-left font-medium" onClick={() => setExpandedSeries((current) => ({ ...current, [item.id]: !open }))}>
                     {open ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
