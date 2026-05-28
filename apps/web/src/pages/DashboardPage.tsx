@@ -16,6 +16,7 @@ type DashboardPoster = {
   year: number | null;
   seasonNumber: number | null;
   watchedAt: string | null;
+  addedAt?: string;
   posterUrl: string | null;
 };
 

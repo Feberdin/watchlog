@@ -45,6 +45,22 @@ function canDeleteMedia(media: MediaRecord) {
   return !media.jellyfinItemId && ["manual", "tmdb"].includes(media.metadataSource);
 }
 
+function resultKey(result: TmdbSearchResult) {
+  return `${result.type}-${result.tmdbId}`;
+}
+
+function defaultWatchedAtFor(result: TmdbSearchResult, precision: DatePrecision, value: string) {
+  if (precision === "unknown") {
+    return null;
+  }
+
+  if (value.trim()) {
+    return value.trim();
+  }
+
+  return precision === "year" && result.year ? String(result.year) : null;
+}
+
 function Poster({ src, type }: { src: string | null; type: "movie" | "show" }) {
   const Icon = type === "movie" ? Film : Tv;
   return src ? (
@@ -62,6 +78,7 @@ export function ManualAddPage() {
   const [year, setYear] = useState("");
   const [results, setResults] = useState<TmdbSearchResult[]>([]);
   const [selected, setSelected] = useState<TmdbSearchResult | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [datePrecision, setDatePrecision] = useState<DatePrecision>("year");
   const [watchedAt, setWatchedAt] = useState("");
   const [note, setNote] = useState("");
@@ -111,12 +128,50 @@ export function ManualAddPage() {
       }
       const found = await apiRequest<TmdbSearchResult[]>(`/api/metadata/tmdb/search?${params.toString()}`);
       setResults(found);
+      setSelectedKeys(new Set());
       setStatus(found.length === 0 ? "Keine TMDb-Treffer gefunden. Bitte Titel oder Jahr anpassen." : null);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "TMDb-Suche ist fehlgeschlagen.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function selectResult(result: TmdbSearchResult) {
+    setSelected(result);
+    if (datePrecision === "year" && !watchedAt.trim() && result.year) {
+      setWatchedAt(String(result.year));
+    }
+  }
+
+  function toggleResult(result: TmdbSearchResult) {
+    const key = resultKey(result);
+    setSelectedKeys((existing) => {
+      const next = new Set(existing);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  async function createWatchForResult(result: TmdbSearchResult) {
+    const imported = await apiRequest<MediaRecord>("/api/metadata/tmdb/import", {
+      method: "POST",
+      body: JSON.stringify({ type: result.type, tmdbId: result.tmdbId }),
+    });
+    await apiRequest("/api/watch-events/manual", {
+      method: "POST",
+      body: JSON.stringify({
+        mediaId: imported.id,
+        datePrecision,
+        watchedAt: defaultWatchedAtFor(result, datePrecision, watchedAt),
+        note,
+      }),
+    });
+    return imported;
   }
 
   async function submit() {
@@ -128,19 +183,7 @@ export function ManualAddPage() {
     setSaving(true);
     setStatus(null);
     try {
-      const imported = await apiRequest<MediaRecord>("/api/metadata/tmdb/import", {
-        method: "POST",
-        body: JSON.stringify({ type: selected.type, tmdbId: selected.tmdbId }),
-      });
-      await apiRequest("/api/watch-events/manual", {
-        method: "POST",
-        body: JSON.stringify({
-          mediaId: imported.id,
-          datePrecision,
-          watchedAt: datePrecision === "unknown" ? null : watchedAt || null,
-          note,
-        }),
-      });
+      const imported = await createWatchForResult(selected);
       setWatchedAt("");
       setNote("");
       setSelected(null);
@@ -148,6 +191,33 @@ export function ManualAddPage() {
       setStatus(`${imported.title} wurde als gesehen gespeichert.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Eintrag konnte nicht gespeichert werden.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitSelected() {
+    const selectedResults = results.filter((result) => selectedKeys.has(resultKey(result)));
+    if (selectedResults.length === 0) {
+      setStatus("Bitte mindestens einen TMDb-Treffer fuer die Massenauswahl markieren.");
+      return;
+    }
+
+    setSaving(true);
+    setStatus(`0/${selectedResults.length} Titel gespeichert...`);
+    try {
+      for (let index = 0; index < selectedResults.length; index += 1) {
+        await createWatchForResult(selectedResults[index]!);
+        setStatus(`${index + 1}/${selectedResults.length} Titel gespeichert...`);
+      }
+      setWatchedAt("");
+      setNote("");
+      setSelected(null);
+      setSelectedKeys(new Set());
+      await Promise.all([loadMedia(), loadMissingPosters()]);
+      setStatus(`${selectedResults.length} Titel wurden als gesehen gespeichert.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Massenauswahl konnte nicht vollstaendig gespeichert werden.");
     } finally {
       setSaving(false);
     }
@@ -240,12 +310,11 @@ export function ManualAddPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {results.map((result) => {
               const active = selected?.type === result.type && selected.tmdbId === result.tmdbId;
+              const checked = selectedKeys.has(resultKey(result));
               return (
-                <button
+                <article
                   key={`${result.type}-${result.tmdbId}`}
-                  type="button"
                   className={`flex gap-3 rounded-md border p-3 text-left transition ${active ? "border-teal-300 bg-teal-950/40" : "border-slate-800 bg-slate-950 hover:border-slate-600"}`}
-                  onClick={() => setSelected(result)}
                 >
                   <Poster src={result.posterUrl} type={result.type} />
                   <span className="min-w-0 flex-1">
@@ -254,11 +323,27 @@ export function ManualAddPage() {
                         <span className="block font-medium">{result.title}</span>
                         <span className="mt-1 block text-sm text-slate-400">{mediaLabel(result.type)} · {result.year ?? "ohne Jahr"} · TMDb {result.tmdbId}</span>
                       </span>
-                      {active && <CheckCircle2 className="h-5 w-5 shrink-0 text-teal-300" aria-label="Ausgewaehlt" />}
+                      <label className="inline-flex shrink-0 items-center gap-2 rounded-md bg-slate-900 px-2 py-1 text-xs text-slate-200 ring-1 ring-slate-700">
+                        <input
+                          className="h-4 w-4 accent-teal-400"
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleResult(result)}
+                        />
+                        Mehrfach
+                      </label>
                     </span>
                     <span className="mt-2 line-clamp-3 block text-sm text-slate-300">{result.overview ?? "Keine Beschreibung vorhanden."}</span>
+                    <button
+                      type="button"
+                      className={`mt-3 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm ${active ? "bg-teal-400 text-slate-950" : "bg-slate-800 text-slate-100 hover:bg-slate-700"}`}
+                      onClick={() => selectResult(result)}
+                    >
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                      {active ? "Ausgewaehlt" : "Einzeln auswaehlen"}
+                    </button>
                   </span>
-                </button>
+                </article>
               );
             })}
           </div>
@@ -276,7 +361,17 @@ export function ManualAddPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
               Datengenauigkeit
-              <select className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2" value={datePrecision} onChange={(event) => setDatePrecision(event.target.value as DatePrecision)}>
+              <select
+                className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2"
+                value={datePrecision}
+                onChange={(event) => {
+                  const nextPrecision = event.target.value as DatePrecision;
+                  setDatePrecision(nextPrecision);
+                  if (nextPrecision === "year" && !watchedAt.trim() && selected?.year) {
+                    setWatchedAt(String(selected.year));
+                  }
+                }}
+              >
                 <option value="exact">exakt</option>
                 <option value="date">Datum</option>
                 <option value="month">Monat/Jahr</option>
@@ -300,10 +395,21 @@ export function ManualAddPage() {
             <textarea className="mt-1 min-h-24 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2" value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
           {status && <p className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm">{status}</p>}
-          <button className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || !selected}>
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            {saving ? "Speichern..." : "Als gesehen speichern"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || !selected}>
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              {saving ? "Speichern..." : "Als gesehen speichern"}
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 font-medium text-slate-100 disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-700"
+              disabled={saving || selectedKeys.size === 0}
+              onClick={() => void submitSelected()}
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              Auswahl speichern ({selectedKeys.size})
+            </button>
+          </div>
         </form>
       </section>
 

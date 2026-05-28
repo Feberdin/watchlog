@@ -21,6 +21,7 @@ type CollageItem = {
   year: number | null;
   seasonNumber: number | null;
   watchedAt: string | null;
+  addedAt: string;
   posterUrl: string | null;
 };
 
@@ -44,7 +45,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           },
         },
         include: { media: true },
-        orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ createdAt: "desc" }],
         take: 80,
       }),
       app.prisma.media.findMany({
@@ -135,6 +136,7 @@ function buildDashboardCollage(
     year: event.media.year,
     seasonNumber: null,
     watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
+    addedAt: event.createdAt.toISOString(),
     posterUrl: posterUrlForMedia(event.media),
   }));
 
@@ -154,9 +156,15 @@ function buildDashboardCollage(
       const watchedDates = episodes
         .map((episode) => episode.watchEvents[0]?.watchedAt ?? episode.watchEvents[0]?.createdAt)
         .filter((value): value is Date => value instanceof Date);
+      const addedDates = episodes
+        .map((episode) => episode.watchEvents[0]?.createdAt)
+        .filter((value): value is Date => value instanceof Date);
       const lastWatchedAt = watchedDates.length > 0
         ? new Date(Math.max(...watchedDates.map((value) => value.getTime())))
         : null;
+      const lastAddedAt = addedDates.length > 0
+        ? new Date(Math.max(...addedDates.map((value) => value.getTime())))
+        : new Date(0);
 
       seasons.push({
         id: `season:${show.id}:${seasonNumber}`,
@@ -165,6 +173,7 @@ function buildDashboardCollage(
         year: firstKnownYear(episodes) ?? show.year,
         seasonNumber,
         watchedAt: lastWatchedAt?.toISOString() ?? null,
+        addedAt: lastAddedAt.toISOString(),
         posterUrl: posterUrlForMedia(show),
       });
     }
@@ -172,7 +181,7 @@ function buildDashboardCollage(
   });
 
   return [...movies, ...completedSeasons]
-    .sort((left, right) => Date.parse(right.watchedAt ?? "1970-01-01") - Date.parse(left.watchedAt ?? "1970-01-01"))
+    .sort((left, right) => Date.parse(right.addedAt) - Date.parse(left.addedAt))
     .slice(0, 48);
 }
 
