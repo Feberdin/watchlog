@@ -20,7 +20,22 @@ type PeriodStats = {
   watchtimeSeconds: number;
 };
 
+type StatsDetail = {
+  title: string;
+  type: "movie" | "series";
+  count: number;
+  watchtimeSeconds: number;
+};
+
+type StatsBucket = {
+  label: string;
+  count: number;
+  watchtimeSeconds: number;
+  items: StatsDetail[];
+};
+
 type TimelineStats = {
+  sourceNote: string;
   periods: {
     week: PeriodStats;
     month: PeriodStats;
@@ -29,15 +44,29 @@ type TimelineStats = {
   totals: {
     events: number;
     watchtimeSeconds: number;
+    jellyfinEvents: number;
+    jellyfinWatchtimeSeconds: number;
     rewatches: number;
     firstWatchedAt: string | null;
   };
-  weekdays: Array<{ label: string; count: number; watchtimeSeconds: number }>;
-  monthlyTrend: Array<{ label: string; count: number; watchtimeSeconds: number }>;
+  weekdays: StatsBucket[];
+  monthlyTrend: StatsBucket[];
+  movies: {
+    weekdays: StatsBucket[];
+    monthlyTrend: StatsBucket[];
+    topWeekday: StatsBucket | null;
+    topMonth: StatsBucket | null;
+  };
+  series: {
+    weekdays: StatsBucket[];
+    monthlyTrend: StatsBucket[];
+    topWeekday: StatsBucket | null;
+    topMonth: StatsBucket | null;
+  };
   funFacts: {
-    topWeekday: { label: string; count: number; watchtimeSeconds: number } | null;
+    topWeekday: StatsBucket | null;
     topTitle: { title: string; type: string; count: number; watchtimeSeconds: number } | null;
-    topMonth: { label: string; count: number; watchtimeSeconds: number } | null;
+    topMonth: StatsBucket | null;
     averageWatchtimeSeconds: number;
   };
 };
@@ -195,7 +224,15 @@ function StatCard({ label, stats }: { label: string; stats: PeriodStats }) {
   );
 }
 
-function BarList({ items, mode }: { items: Array<{ label: string; count: number; watchtimeSeconds: number }>; mode: "count" | "watchtime" }) {
+function detailText(items: StatsDetail[]) {
+  if (items.length === 0) {
+    return "Keine Jellyfin-Titel in diesem Zeitraum.";
+  }
+
+  return items.map((item) => `${item.title}: ${formatDuration(item.watchtimeSeconds)}${item.count > 1 ? `, ${item.count} Eintraege` : ""}`).join("\n");
+}
+
+function BarList({ items, mode }: { items: StatsBucket[]; mode: "count" | "watchtime" }) {
   const max = Math.max(1, ...items.map((item) => mode === "count" ? item.count : item.watchtimeSeconds));
 
   return (
@@ -204,12 +241,23 @@ function BarList({ items, mode }: { items: Array<{ label: string; count: number;
         const value = mode === "count" ? item.count : item.watchtimeSeconds;
         const width = Math.max(3, Math.round((value / max) * 100));
         return (
-          <div key={item.label} className="grid grid-cols-[72px_1fr_70px] items-center gap-3 text-sm">
+          <div key={item.label} className="group relative grid grid-cols-[72px_1fr_70px] items-center gap-3 text-sm" title={detailText(item.items)}>
             <span className="truncate text-slate-400">{item.label}</span>
             <span className="h-3 overflow-hidden rounded-full bg-slate-800">
               <span className="block h-full rounded-full bg-teal-300" style={{ width: `${width}%` }} />
             </span>
             <span className="text-right text-slate-300">{mode === "count" ? item.count : formatDuration(item.watchtimeSeconds)}</span>
+            {item.items.length > 0 && (
+              <span className="pointer-events-none absolute left-16 top-5 z-30 hidden w-80 rounded-md border border-slate-700 bg-slate-950 p-3 text-xs text-slate-200 shadow-xl group-hover:block">
+                <span className="mb-2 block font-medium text-teal-200">{item.label}</span>
+                {item.items.map((detail) => (
+                  <span key={`${detail.type}-${detail.title}`} className="mb-1 block">
+                    {detail.title}
+                    <span className="text-slate-400"> · {formatDuration(detail.watchtimeSeconds)}{detail.count > 1 ? ` · ${detail.count}x` : ""}</span>
+                  </span>
+                ))}
+              </span>
+            )}
           </div>
         );
       })}
@@ -222,36 +270,56 @@ function TimelineStatsPanel({ stats }: { stats: TimelineStats | null }) {
     return <p className="mt-5 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">Statistiken werden geladen...</p>;
   }
 
-  const funFacts = [
-    stats.funFacts.topWeekday ? `Meiste Watchtime am ${stats.funFacts.topWeekday.label}: ${formatDuration(stats.funFacts.topWeekday.watchtimeSeconds)}.` : null,
-    stats.funFacts.topTitle ? `Am häufigsten in der Timeline: ${stats.funFacts.topTitle.title} (${stats.funFacts.topTitle.count}x).` : null,
-    stats.funFacts.topMonth ? `Aktivster Monat im Trend: ${stats.funFacts.topMonth.label} mit ${stats.funFacts.topMonth.count} Einträgen.` : null,
-    stats.funFacts.averageWatchtimeSeconds ? `Durchschnitt pro Eintrag: ${formatDuration(stats.funFacts.averageWatchtimeSeconds)}.` : null,
-  ].filter(Boolean);
-
   return (
     <section className="mt-5 space-y-4">
+      <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Gesamte Watchtime</h2>
+            <p className="mt-1 text-sm text-slate-400">Alle jemals gespeicherten Filme und Serien zusammen. Wochentage, Trends und Fun Facts nutzen nur Jellyfin-Events.</p>
+          </div>
+          <p className="text-3xl font-semibold text-teal-200">{formatDuration(stats.totals.watchtimeSeconds)}</p>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">{stats.sourceNote}</p>
+      </article>
+
       <div className="grid gap-3 lg:grid-cols-3">
         <StatCard label="Letzte 7 Tage" stats={stats.periods.week} />
         <StatCard label="Dieser Monat" stats={stats.periods.month} />
         <StatCard label="Dieses Jahr" stats={stats.periods.year} />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+      <div className="grid gap-4 xl:grid-cols-2">
         <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-teal-300" aria-hidden="true" />
-            <h2 className="font-semibold">Watchtime nach Wochentag</h2>
+            <h2 className="font-semibold">Filme: Watchtime nach Wochentag</h2>
           </div>
-          <BarList items={stats.weekdays} mode="watchtime" />
+          <BarList items={stats.movies.weekdays} mode="watchtime" />
         </article>
 
         <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-teal-300" aria-hidden="true" />
-            <h2 className="font-semibold">Trend der letzten 12 Monate</h2>
+            <h2 className="font-semibold">Filme: Trend der letzten 12 Monate</h2>
           </div>
-          <BarList items={stats.monthlyTrend} mode="count" />
+          <BarList items={stats.movies.monthlyTrend} mode="count" />
+        </article>
+
+        <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-teal-300" aria-hidden="true" />
+            <h2 className="font-semibold">Serien: Watchtime nach Wochentag</h2>
+          </div>
+          <BarList items={stats.series.weekdays} mode="watchtime" />
+        </article>
+
+        <article className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-teal-300" aria-hidden="true" />
+            <h2 className="font-semibold">Serien: Trend der letzten 12 Monate</h2>
+          </div>
+          <BarList items={stats.series.monthlyTrend} mode="count" />
         </article>
       </div>
 
@@ -260,17 +328,26 @@ function TimelineStatsPanel({ stats }: { stats: TimelineStats | null }) {
           <Sparkles className="h-5 w-5 text-teal-300" aria-hidden="true" />
           <h2 className="font-semibold">Fun Facts</h2>
         </div>
-        {funFacts.length === 0 ? (
+        {stats.totals.jellyfinEvents === 0 ? (
           <p className="text-sm text-slate-300">Noch nicht genug Daten für belastbare Fun Facts.</p>
         ) : (
           <div className="grid gap-2 md:grid-cols-2">
-            {funFacts.map((fact) => (
-              <p key={fact} className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">{fact}</p>
-            ))}
+            <p className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">
+              Film-Top-Tag: {stats.movies.topWeekday ? `${stats.movies.topWeekday.label}, ${formatDuration(stats.movies.topWeekday.watchtimeSeconds)}` : "noch offen"}.
+            </p>
+            <p className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">
+              Serien-Top-Tag: {stats.series.topWeekday ? `${stats.series.topWeekday.label}, ${formatDuration(stats.series.topWeekday.watchtimeSeconds)}` : "noch offen"}.
+            </p>
+            <p className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">
+              Film-Trendmonat: {stats.movies.topMonth && stats.movies.topMonth.count > 0 ? `${stats.movies.topMonth.label} mit ${stats.movies.topMonth.count} Jellyfin-Eintraegen` : "noch offen"}.
+            </p>
+            <p className="rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">
+              Serien-Trendmonat: {stats.series.topMonth && stats.series.topMonth.count > 0 ? `${stats.series.topMonth.label} mit ${stats.series.topMonth.count} Jellyfin-Eintraegen` : "noch offen"}.
+            </p>
           </div>
         )}
         <p className="mt-3 text-xs text-slate-500">
-          Gesamt: {stats.totals.events} Einträge, {formatDuration(stats.totals.watchtimeSeconds)} Watchtime, {stats.totals.rewatches} Rewatches.
+          Gesamt: {stats.totals.events} Einträge, {formatDuration(stats.totals.watchtimeSeconds)} Watchtime, davon {stats.totals.jellyfinEvents} Jellyfin-Einträge mit {formatDuration(stats.totals.jellyfinWatchtimeSeconds)}.
         </p>
       </article>
     </section>

@@ -156,6 +156,11 @@ export type TmdbCinemaMemoryMovie = TmdbSearchResult & {
   voteCount: number | null;
 };
 
+export type TmdbTvMemoryShow = TmdbSearchResult & {
+  voteAverage: number | null;
+  voteCount: number | null;
+};
+
 function authHeaders(settings: TmdbSettingsForClient) {
   if (!settings.tmdbBearerToken) {
     throw new Error("TMDb: Bearer Token fehlt. Bitte in den Integrationen speichern.");
@@ -480,6 +485,48 @@ export async function getTmdbCinemaMemoryMovies(
       ...movieToSearchResult(movie, settings.imageBaseUrl),
       voteAverage: typeof movie.vote_average === "number" ? movie.vote_average : null,
       voteCount: typeof movie.vote_count === "number" ? movie.vote_count : null,
+    }));
+}
+
+export async function getTmdbTvMemoryShows(
+  settings: TmdbSettingsForClient,
+  options: { birthYear: number; startAge: number; endAge: number; limit: number },
+): Promise<TmdbTvMemoryShow[]> {
+  const startYear = options.birthYear + options.startAge;
+  const endYear = options.birthYear + options.endAge;
+  const years = Array.from({ length: endYear - startYear + 1 }, (_, index) => startYear + index);
+  const pagesPerYear = Math.min(3, Math.ceil((options.limit * 2) / Math.max(years.length, 1)));
+  const responses = await Promise.all(years.flatMap((year) => (
+    Array.from({ length: pagesPerYear }, (_, index) => tmdbGet<TmdbSearchResponse<TmdbShowResult>>("/discover/tv", settings, {
+      language: settings.preferredLanguage,
+      include_adult: "false",
+      sort_by: "popularity.desc",
+      "vote_count.gte": 150,
+      "first_air_date.gte": `${year}-01-01`,
+      "first_air_date.lte": `${year}-12-31`,
+      page: index + 1,
+    }).catch(() => ({ results: [] })))
+  )));
+
+  const byTmdbId = new Map<number, TmdbShowResult>();
+  for (const response of responses) {
+    for (const result of response.results ?? []) {
+      if (!result.id || !result.poster_path) continue;
+      byTmdbId.set(result.id, result);
+    }
+  }
+
+  return Array.from(byTmdbId.values())
+    .sort((left, right) => {
+      const leftScore = (left.vote_count ?? 0) * Math.max(left.vote_average ?? 0, 1);
+      const rightScore = (right.vote_count ?? 0) * Math.max(right.vote_average ?? 0, 1);
+      return rightScore - leftScore;
+    })
+    .slice(0, options.limit * 5)
+    .map((show) => ({
+      ...showToSearchResult(show, settings.imageBaseUrl),
+      voteAverage: typeof show.vote_average === "number" ? show.vote_average : null,
+      voteCount: typeof show.vote_count === "number" ? show.vote_count : null,
     }));
 }
 

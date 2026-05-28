@@ -11,8 +11,8 @@ import type { ReactNode } from "react";
 type LayoutProps = {
   children: ReactNode;
   onLogout: () => void;
-  active: "dashboard" | "timeline" | "series" | "swipe" | "cinema" | "manual" | "integrations";
-  setActive: (page: "dashboard" | "timeline" | "series" | "swipe" | "cinema" | "manual" | "integrations") => void;
+  active: "dashboard" | "timeline" | "series" | "swipe" | "cinema" | "tvMemory" | "manual" | "integrations";
+  setActive: (page: "dashboard" | "timeline" | "series" | "swipe" | "cinema" | "tvMemory" | "manual" | "integrations") => void;
 };
 
 export function Layout({ children, onLogout, active, setActive }: LayoutProps) {
@@ -22,6 +22,7 @@ export function Layout({ children, onLogout, active, setActive }: LayoutProps) {
     { id: "series" as const, label: "Serien", icon: Tv },
     { id: "swipe" as const, label: "Swipen", icon: Sparkles },
     { id: "cinema" as const, label: "Kino", icon: Clapperboard },
+    { id: "tvMemory" as const, label: "TV", icon: Tv },
     { id: "manual" as const, label: "Manuell", icon: PlusCircle },
     { id: "integrations" as const, label: "Integrationen", icon: Plug },
   ];

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Clapperboard, Film, History, Repeat2, Tv } from "lucide-react";
+import { CalendarDays, Clapperboard, Film, Repeat2, Tv } from "lucide-react";
 import { apiRequest } from "../api/client";
 
 type DashboardPoster = {
@@ -33,15 +33,8 @@ type DashboardResponse = {
   }>;
 };
 
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }) : "Datum unbekannt";
-}
+type CollageFilter = "all" | "movie" | "series";
+type CollageSort = "addedDesc" | "watchedDesc" | "yearAsc" | "yearDesc" | "titleAsc";
 
 function typeLabel(type: string) {
   if (type === "movie") return "Film";
@@ -83,6 +76,8 @@ function PosterTile({ item, index, dense }: { item: DashboardPoster; index: numb
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [collageFilter, setCollageFilter] = useState<CollageFilter>("all");
+  const [collageSort, setCollageSort] = useState<CollageSort>("addedDesc");
 
   useEffect(() => {
     apiRequest<DashboardResponse>("/api/dashboard").then(setData).catch((caught) => {
@@ -97,6 +92,23 @@ export function DashboardPage() {
     { label: "Rewatches", value: data.metrics.rewatches, detail: "mehrfach gesehen", icon: Repeat2 },
   ] : [], [data]);
 
+  const visiblePosters = useMemo(() => {
+    const collage = data?.collage ?? [];
+    const filtered = collage.filter((item) => {
+      if (collageFilter === "movie") return item.type === "movie";
+      if (collageFilter === "series") return item.type === "show" || item.type === "season";
+      return true;
+    });
+
+    return [...filtered].sort((left, right) => {
+      if (collageSort === "titleAsc") return left.title.localeCompare(right.title, "de");
+      if (collageSort === "yearAsc") return (left.year ?? 9999) - (right.year ?? 9999) || left.title.localeCompare(right.title, "de");
+      if (collageSort === "yearDesc") return (right.year ?? 0) - (left.year ?? 0) || left.title.localeCompare(right.title, "de");
+      if (collageSort === "watchedDesc") return Date.parse(right.watchedAt ?? right.addedAt ?? "0") - Date.parse(left.watchedAt ?? left.addedAt ?? "0");
+      return Date.parse(right.addedAt ?? "0") - Date.parse(left.addedAt ?? "0");
+    });
+  }, [collageFilter, collageSort, data]);
+
   if (error) {
     return <p className="rounded-md border border-red-500/40 bg-red-950 p-4 text-red-100">{error}</p>;
   }
@@ -106,7 +118,6 @@ export function DashboardPage() {
   }
 
   const denseCollage = data.collage.length >= 18;
-  const visiblePosters = data.collage;
 
   return (
     <section>
@@ -116,7 +127,7 @@ export function DashboardPage() {
           <p className="mt-1 text-sm text-slate-400">Deine gesehene Sammlung wächst als Poster-Kollage mit.</p>
         </div>
         <p className="rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300">
-          {data.collage.length} Filme/Staffeln
+          {visiblePosters.length} von {data.collage.length} Postern
         </p>
       </div>
 
@@ -146,6 +157,26 @@ export function DashboardPage() {
             <h2 className="font-semibold">Poster-Kollage</h2>
             <p className="mt-1 text-sm text-slate-400">Gezeigt werden alle gesehenen Filme und vollständig gesehene Staffeln, damit die Wand mit deiner Sammlung weiterwächst.</p>
           </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label>
+              <span className="sr-only">Kollage filtern</span>
+              <select className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2" value={collageFilter} onChange={(event) => setCollageFilter(event.target.value as CollageFilter)}>
+                <option value="all">Alle</option>
+                <option value="movie">Filme</option>
+                <option value="series">Serien</option>
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">Kollage sortieren</span>
+              <select className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2" value={collageSort} onChange={(event) => setCollageSort(event.target.value as CollageSort)}>
+                <option value="addedDesc">Neu in WatchLog</option>
+                <option value="watchedDesc">Zuletzt gesehen</option>
+                <option value="yearAsc">Erscheinungsjahr aufsteigend</option>
+                <option value="yearDesc">Erscheinungsjahr absteigend</option>
+                <option value="titleAsc">Titel A-Z</option>
+              </select>
+            </label>
+          </div>
         </div>
         {visiblePosters.length === 0 ? (
           <div className="flex min-h-64 items-center justify-center p-6 text-center">
@@ -159,35 +190,6 @@ export function DashboardPage() {
             {visiblePosters.map((item, index) => <PosterTile key={item.id} item={item} index={index} dense={denseCollage} />)}
           </div>
         )}
-      </section>
-
-      <section className="mt-6">
-        <div className="flex items-center gap-2">
-          <History className="h-5 w-5 text-slate-400" aria-hidden="true" />
-          <h2 className="text-lg font-semibold">Zuletzt gesehen</h2>
-        </div>
-        <div className="mt-3 overflow-hidden rounded-lg border border-slate-800">
-          {data.recent.length === 0 ? (
-            <p className="bg-slate-900 p-4 text-sm text-slate-300">Noch keine WatchEvents vorhanden. Lege manuell einen Film an oder sende einen Jellyfin-Webhook.</p>
-          ) : (
-            data.recent.map((item) => (
-              <article key={item.id} className="flex items-center gap-3 border-b border-slate-800 bg-slate-900 px-4 py-3 last:border-b-0">
-                {item.posterUrl ? (
-                  <img className="h-16 w-11 rounded object-cover ring-1 ring-slate-800" src={item.posterUrl} alt="" loading="lazy" />
-                ) : (
-                  <div className="flex h-16 w-11 items-center justify-center rounded bg-slate-800">
-                    <Film className="h-5 w-5 text-slate-500" aria-hidden="true" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{item.title}</p>
-                  <p className="text-sm text-slate-400">{typeLabel(item.type)} · {item.datePrecision}</p>
-                </div>
-                <time className="shrink-0 text-right text-sm text-slate-300">{formatDate(item.watchedAt)}</time>
-              </article>
-            ))
-          )}
-        </div>
       </section>
     </section>
   );

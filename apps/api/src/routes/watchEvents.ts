@@ -11,16 +11,33 @@ import { createManualWatchEvent } from "../services/watchEvents.js";
 
 type WatchEventStatsRow = {
   watchedAt: Date | null;
+  createdAt: Date;
   durationSeconds: number | null;
   rewatchIndex: number;
+  source: string;
   media: {
     id: string;
     type: string;
     title: string;
     runtimeSeconds: number | null;
+    seasonNumber: number | null;
     parent: { id: string; title: string } | null;
     originalTitle: string | null;
   };
+};
+
+type StatsDetail = {
+  title: string;
+  type: "movie" | "series";
+  count: number;
+  watchtimeSeconds: number;
+};
+
+type StatsBucket = {
+  label: string;
+  count: number;
+  watchtimeSeconds: number;
+  items: StatsDetail[];
 };
 
 const weekdayLabels = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -55,7 +72,7 @@ function summarizePeriod(rows: WatchEventStatsRow[], from: Date) {
   const periodRows = rows.filter((row) => row.watchedAt && row.watchedAt >= from);
   const uniqueMovies = new Set(periodRows.filter((row) => row.media.type === "movie").map((row) => row.media.id));
   const uniqueSeries = new Set(periodRows
-    .filter((row) => row.media.type === "episode")
+    .filter((row) => row.media.type === "episode" || row.media.type === "show")
     .map((row) => row.media.parent?.id ?? row.media.originalTitle ?? row.media.id));
 
   return {
@@ -76,6 +93,7 @@ function buildMonthlyTrend(rows: WatchEventStatsRow[]) {
       label: `${monthLabels[date.getMonth()]} ${String(date.getFullYear()).slice(2)}`,
       count: 0,
       watchtimeSeconds: 0,
+      items: [] as StatsDetail[],
     };
   });
   const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
@@ -85,11 +103,90 @@ function buildMonthlyTrend(rows: WatchEventStatsRow[]) {
     const key = `${row.watchedAt.getFullYear()}-${String(row.watchedAt.getMonth() + 1).padStart(2, "0")}`;
     const bucket = byKey.get(key);
     if (!bucket) continue;
-    bucket.count += 1;
-    bucket.watchtimeSeconds += secondsFor(row);
+    addRowToBucket(bucket, row, "all");
   }
 
   return buckets;
+}
+
+function mediaStatsTitle(row: WatchEventStatsRow, mode: "movie" | "series" | "all") {
+  if (row.media.type === "movie") {
+    return row.media.title;
+  }
+
+  const seriesTitle = row.media.parent?.title ?? row.media.originalTitle ?? row.media.title;
+  if (mode === "series" && row.media.seasonNumber !== null) {
+    return `${seriesTitle} - Staffel ${row.media.seasonNumber}`;
+  }
+
+  return seriesTitle;
+}
+
+function addRowToBucket(bucket: StatsBucket, row: WatchEventStatsRow, mode: "movie" | "series" | "all") {
+  const seconds = secondsFor(row);
+  bucket.count += 1;
+  bucket.watchtimeSeconds += seconds;
+
+  const type = row.media.type === "movie" ? "movie" : "series";
+  const title = mediaStatsTitle(row, mode);
+  const existing = bucket.items.find((item) => item.title === title && item.type === type);
+  if (existing) {
+    existing.count += 1;
+    existing.watchtimeSeconds += seconds;
+    return;
+  }
+
+  bucket.items.push({ title, type, count: 1, watchtimeSeconds: seconds });
+}
+
+function topDetails(details: StatsDetail[]) {
+  return [...details]
+    .sort((left, right) => right.watchtimeSeconds - left.watchtimeSeconds || right.count - left.count || left.title.localeCompare(right.title, "de"))
+    .slice(0, 8);
+}
+
+function finalizeBucket<T extends StatsBucket>(bucket: T): T {
+  return {
+    ...bucket,
+    items: topDetails(bucket.items),
+  };
+}
+
+function buildWeekdayBuckets(rows: WatchEventStatsRow[], mode: "movie" | "series") {
+  const buckets: StatsBucket[] = weekdayLabels.map((label) => ({ label, count: 0, watchtimeSeconds: 0, items: [] }));
+  for (const row of rows) {
+    if (!row.watchedAt) continue;
+    if (mode === "movie" && row.media.type !== "movie") continue;
+    if (mode === "series" && row.media.type !== "episode" && row.media.type !== "show") continue;
+    const weekday = buckets[row.watchedAt.getDay()];
+    if (weekday) {
+      addRowToBucket(weekday, row, mode);
+    }
+  }
+  return buckets.map(finalizeBucket);
+}
+
+function buildMonthlyTrendFor(rows: WatchEventStatsRow[], mode: "movie" | "series") {
+  const allBuckets = buildMonthlyTrend(rows.map((row) => row));
+  for (const bucket of allBuckets) {
+    bucket.count = 0;
+    bucket.watchtimeSeconds = 0;
+    bucket.items = [];
+  }
+  const byLabel = new Map(allBuckets.map((bucket) => [bucket.label, bucket]));
+
+  for (const row of rows) {
+    if (!row.watchedAt) continue;
+    if (mode === "movie" && row.media.type !== "movie") continue;
+    if (mode === "series" && row.media.type !== "episode" && row.media.type !== "show") continue;
+    const label = `${monthLabels[row.watchedAt.getMonth()]} ${String(row.watchedAt.getFullYear()).slice(2)}`;
+    const bucket = byLabel.get(label);
+    if (bucket) {
+      addRowToBucket(bucket, row, mode);
+    }
+  }
+
+  return allBuckets.map(finalizeBucket);
 }
 
 function topEntry<T extends { count?: number; watchtimeSeconds?: number }>(items: T[], key: "count" | "watchtimeSeconds") {
@@ -152,21 +249,16 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const typedRows = rows as WatchEventStatsRow[];
-    const weekdays = weekdayLabels.map((label) => ({ label, count: 0, watchtimeSeconds: 0 }));
+    const jellyfinRows = typedRows.filter((row) => row.source === "jellyfin");
     const titles = new Map<string, { id: string; title: string; type: string; count: number; watchtimeSeconds: number }>();
 
-    for (const row of typedRows) {
+    for (const row of jellyfinRows) {
       if (!row.watchedAt) continue;
-      const weekday = weekdays[row.watchedAt.getDay()];
-      if (!weekday) continue;
-      weekday.count += 1;
-      weekday.watchtimeSeconds += secondsFor(row);
-
       const titleKey = row.media.type === "episode"
-        ? row.media.parent?.id ?? row.media.originalTitle ?? row.media.id
+        ? `${row.media.parent?.id ?? row.media.originalTitle ?? row.media.id}:season:${row.media.seasonNumber ?? "unknown"}`
         : row.media.id;
       const title = row.media.type === "episode"
-        ? row.media.parent?.title ?? row.media.originalTitle ?? row.media.title
+        ? `${row.media.parent?.title ?? row.media.originalTitle ?? row.media.title}${row.media.seasonNumber !== null ? ` - Staffel ${row.media.seasonNumber}` : ""}`
         : row.media.title;
       const existing = titles.get(titleKey) ?? {
         id: titleKey,
@@ -181,6 +273,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const totalWatchtimeSeconds = typedRows.reduce((sum, row) => sum + secondsFor(row), 0);
+    const jellyfinWatchtimeSeconds = jellyfinRows.reduce((sum, row) => sum + secondsFor(row), 0);
     const firstWatchedAt = typedRows.length > 0
       ? typedRows.reduce<Date | null>((oldest, row) => {
         if (!row.watchedAt) return oldest;
@@ -188,29 +281,57 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       }, null)
       : null;
     const topTitle = topEntry(Array.from(titles.values()), "count");
-    const topWeekday = topEntry(weekdays, "watchtimeSeconds");
-    const monthlyTrend = buildMonthlyTrend(typedRows);
+    const movieWeekdays = buildWeekdayBuckets(jellyfinRows, "movie");
+    const seriesWeekdays = buildWeekdayBuckets(jellyfinRows, "series");
+    const movieMonthlyTrend = buildMonthlyTrendFor(jellyfinRows, "movie");
+    const seriesMonthlyTrend = buildMonthlyTrendFor(jellyfinRows, "series");
+    const combinedWeekdays = movieWeekdays.map((bucket, index) => {
+      const seriesBucket = seriesWeekdays[index] ?? { count: 0, watchtimeSeconds: 0, items: [] as StatsDetail[] };
+      return {
+        ...bucket,
+        count: bucket.count + seriesBucket.count,
+        watchtimeSeconds: bucket.watchtimeSeconds + seriesBucket.watchtimeSeconds,
+        items: topDetails([...bucket.items, ...seriesBucket.items]),
+      };
+    });
+    const topWeekday = topEntry([...movieWeekdays, ...seriesWeekdays], "watchtimeSeconds");
+    const monthlyTrend = buildMonthlyTrend(jellyfinRows).map(finalizeBucket);
     const topMonth = topEntry(monthlyTrend, "count");
 
     return {
+      sourceNote: "Statistiken fuer Wochentage, Trends und Fun Facts beruecksichtigen nur Jellyfin-WatchEvents. Manuelle Massenmarkierungen werden dort bewusst ignoriert.",
       periods: {
-        week: summarizePeriod(typedRows, periodStart(7)),
-        month: summarizePeriod(typedRows, monthStart()),
-        year: summarizePeriod(typedRows, yearStart()),
+        week: summarizePeriod(jellyfinRows, periodStart(7)),
+        month: summarizePeriod(jellyfinRows, monthStart()),
+        year: summarizePeriod(jellyfinRows, yearStart()),
       },
       totals: {
         events: typedRows.length,
         watchtimeSeconds: totalWatchtimeSeconds,
+        jellyfinEvents: jellyfinRows.length,
+        jellyfinWatchtimeSeconds,
         rewatches: typedRows.filter((row) => row.rewatchIndex > 1).length,
         firstWatchedAt: firstWatchedAt?.toISOString() ?? null,
       },
-      weekdays,
+      weekdays: combinedWeekdays,
       monthlyTrend,
+      movies: {
+        weekdays: movieWeekdays,
+        monthlyTrend: movieMonthlyTrend,
+        topWeekday: topEntry(movieWeekdays, "watchtimeSeconds"),
+        topMonth: topEntry(movieMonthlyTrend, "count"),
+      },
+      series: {
+        weekdays: seriesWeekdays,
+        monthlyTrend: seriesMonthlyTrend,
+        topWeekday: topEntry(seriesWeekdays, "watchtimeSeconds"),
+        topMonth: topEntry(seriesMonthlyTrend, "count"),
+      },
       funFacts: {
         topWeekday,
         topTitle,
         topMonth,
-        averageWatchtimeSeconds: typedRows.length > 0 ? Math.round(totalWatchtimeSeconds / typedRows.length) : 0,
+        averageWatchtimeSeconds: jellyfinRows.length > 0 ? Math.round(jellyfinWatchtimeSeconds / jellyfinRows.length) : 0,
       },
     };
   });

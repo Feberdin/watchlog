@@ -17,7 +17,7 @@ function posterUrlForMedia(media: { id: string; posterUrl: string | null }) {
 type CollageItem = {
   id: string;
   title: string;
-  type: "movie" | "season";
+  type: "movie" | "show" | "season";
   year: number | null;
   seasonNumber: number | null;
   watchedAt: string | null;
@@ -28,7 +28,7 @@ type CollageItem = {
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get("/dashboard", async (request) => {
     const user = request.requireUser();
-    const [events, movieCollageEvents, showsWithEpisodes, movieCount, episodeCount, rewatchCount] = await Promise.all([
+    const [events, movieCollageEvents, showCollageEvents, showsWithEpisodes, movieCount, episodeCount, rewatchCount] = await Promise.all([
       app.prisma.watchEvent.findMany({
         where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
         include: { media: true },
@@ -40,6 +40,19 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           userId: user.id,
           media: {
             type: "movie",
+            metadataSource: { not: "swipe-tmdb" },
+            posterUrl: { not: null },
+          },
+        },
+        include: { media: true },
+        orderBy: [{ createdAt: "desc" }],
+        take: 5000,
+      }),
+      app.prisma.watchEvent.findMany({
+        where: {
+          userId: user.id,
+          media: {
+            type: "show",
             metadataSource: { not: "swipe-tmdb" },
             posterUrl: { not: null },
           },
@@ -96,7 +109,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         episodes: episodeCount,
         rewatches: rewatchCount,
       },
-      collage: buildDashboardCollage(movieCollageEvents, showsWithEpisodes),
+      collage: buildDashboardCollage(movieCollageEvents, showCollageEvents, showsWithEpisodes),
       recent: events.map((event) => ({
         id: event.id,
         title: event.media.title,
@@ -112,6 +125,12 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
 
 function buildDashboardCollage(
   movieEvents: Array<{
+    mediaId: string;
+    watchedAt: Date | null;
+    createdAt: Date;
+    media: { id: string; title: string; type: string; year: number | null; posterUrl: string | null };
+  }>,
+  showEvents: Array<{
     mediaId: string;
     watchedAt: Date | null;
     createdAt: Date;
@@ -133,6 +152,17 @@ function buildDashboardCollage(
     id: event.media.id,
     title: event.media.title,
     type: "movie",
+    year: event.media.year,
+    seasonNumber: null,
+    watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
+    addedAt: event.createdAt.toISOString(),
+    posterUrl: posterUrlForMedia(event.media),
+  }));
+
+  const watchedShows: CollageItem[] = Array.from(new Map(showEvents.map((event) => [event.mediaId, event])).values()).map((event) => ({
+    id: event.media.id,
+    title: event.media.title,
+    type: "show",
     year: event.media.year,
     seasonNumber: null,
     watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
@@ -180,7 +210,7 @@ function buildDashboardCollage(
     return seasons;
   });
 
-  return [...movies, ...completedSeasons]
+  return [...movies, ...watchedShows, ...completedSeasons]
     .sort((left, right) => Date.parse(right.addedAt) - Date.parse(left.addedAt));
 }
 
