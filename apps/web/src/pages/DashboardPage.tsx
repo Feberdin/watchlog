@@ -14,6 +14,7 @@ type DashboardPoster = {
   title: string;
   type: string;
   year: number | null;
+  seasonNumber: number | null;
   watchedAt: string | null;
   posterUrl: string | null;
 };
@@ -63,10 +64,17 @@ function PosterTile({ item, index, dense }: { item: DashboardPoster; index: numb
           <Film className="h-8 w-8 text-slate-500" aria-hidden="true" />
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
+      <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
         <h3 className="line-clamp-2 text-sm font-medium">{item.title}</h3>
         <p className="mt-1 text-xs text-slate-300">{item.year ?? "ohne Jahr"} · {typeLabel(item.type)}</p>
       </div>
+      {item.type === "season" && item.seasonNumber !== null && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-slate-950/10">
+          <span className="rounded-md bg-slate-950/45 px-3 py-1 text-4xl font-black text-white/80 ring-1 ring-white/10 sm:text-5xl">
+            S{String(item.seasonNumber).padStart(2, "0")}
+          </span>
+        </div>
+      )}
     </article>
   );
 }

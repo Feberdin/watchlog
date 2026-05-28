@@ -6,12 +6,13 @@
  */
 
 import crypto from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 
 const POSTER_MAX_BYTES = 8 * 1024 * 1024;
 const POSTER_TIMEOUT_MS = 10_000;
+const CUSTOM_POSTER_PREFIX = "watchlog-custom:";
 const CACHEABLE_HOSTS = new Set([
   "image.tmdb.org",
   "www.themoviedb.org",
@@ -33,6 +34,18 @@ export function isCacheablePosterUrl(value: string | null | undefined): value is
 function cachePath(cacheDir: string, posterUrl: string) {
   const hash = crypto.createHash("sha256").update(posterUrl).digest("hex");
   return path.join(cacheDir, "posters", `${hash}.webp`);
+}
+
+function customPosterPath(cacheDir: string, mediaId: string) {
+  return path.join(cacheDir, "posters", "custom", `${mediaId}.webp`);
+}
+
+export function customPosterRef(mediaId: string) {
+  return `${CUSTOM_POSTER_PREFIX}${mediaId}`;
+}
+
+export function isCustomPosterRef(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.startsWith(CUSTOM_POSTER_PREFIX);
 }
 
 async function fetchPosterBytes(posterUrl: string): Promise<ArrayBuffer> {
@@ -62,6 +75,11 @@ async function fetchPosterBytes(posterUrl: string): Promise<ArrayBuffer> {
 }
 
 export async function getCachedPoster(cacheDir: string, posterUrl: string): Promise<Buffer> {
+  if (isCustomPosterRef(posterUrl)) {
+    const mediaId = posterUrl.slice(CUSTOM_POSTER_PREFIX.length);
+    return readFile(customPosterPath(cacheDir, mediaId));
+  }
+
   if (!isCacheablePosterUrl(posterUrl)) {
     throw new Error("Poster-URL wird nicht gecacht, weil sie nicht von einer erlaubten Bildquelle stammt.");
   }
@@ -86,4 +104,25 @@ export async function getCachedPoster(cacheDir: string, posterUrl: string): Prom
   });
 
   return readFile(targetPath);
+}
+
+export async function saveCustomPoster(cacheDir: string, mediaId: string, bytes: Buffer): Promise<string> {
+  if (bytes.byteLength > POSTER_MAX_BYTES) {
+    throw new Error("Poster ist groesser als das erlaubte Upload-Limit.");
+  }
+
+  const optimized = await sharp(bytes)
+    .rotate()
+    .resize({ width: 360, height: 540, fit: "cover", withoutEnlargement: true })
+    .webp({ quality: 76, effort: 4 })
+    .toBuffer();
+
+  const targetPath = customPosterPath(cacheDir, mediaId);
+  await mkdir(path.dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, optimized);
+  return customPosterRef(mediaId);
+}
+
+export async function deleteCustomPoster(cacheDir: string, mediaId: string): Promise<void> {
+  await rm(customPosterPath(cacheDir, mediaId), { force: true }).catch(() => undefined);
 }

@@ -6,14 +6,17 @@
  */
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
     cache: "no-store",
     credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...(options.headers ?? {}),
-    },
+    headers: isFormData
+      ? { ...(options.headers ?? {}) }
+      : {
+        "content-type": "application/json",
+        ...(options.headers ?? {}),
+      },
   });
 
   if (!response.ok) {

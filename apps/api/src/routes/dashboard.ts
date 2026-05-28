@@ -6,10 +6,10 @@
  */
 
 import type { FastifyPluginAsync } from "fastify";
-import { isCacheablePosterUrl } from "../services/posterCache.js";
+import { isCacheablePosterUrl, isCustomPosterRef } from "../services/posterCache.js";
 
 function posterUrlForMedia(media: { id: string; posterUrl: string | null }) {
-  return isCacheablePosterUrl(media.posterUrl)
+  return isCacheablePosterUrl(media.posterUrl) || isCustomPosterRef(media.posterUrl)
     ? `/api/media/${media.id}/poster.webp`
     : media.posterUrl;
 }
@@ -19,6 +19,7 @@ type CollageItem = {
   title: string;
   type: "movie" | "season";
   year: number | null;
+  seasonNumber: number | null;
   watchedAt: string | null;
   posterUrl: string | null;
 };
@@ -39,6 +40,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           media: {
             type: "movie",
             metadataSource: { not: "swipe-tmdb" },
+            posterUrl: { not: null },
           },
         },
         include: { media: true },
@@ -99,6 +101,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         title: event.media.title,
         type: event.media.type,
         watchedAt: event.watchedAt?.toISOString() ?? null,
+        seasonNumber: event.media.seasonNumber,
         datePrecision: event.datePrecision,
         posterUrl: posterUrlForMedia(event.media),
       })),
@@ -130,6 +133,7 @@ function buildDashboardCollage(
     title: event.media.title,
     type: "movie",
     year: event.media.year,
+    seasonNumber: null,
     watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
     posterUrl: posterUrlForMedia(event.media),
   }));
@@ -159,6 +163,7 @@ function buildDashboardCollage(
         title: `${show.title} - Staffel ${seasonNumber}`,
         type: "season",
         year: firstKnownYear(episodes) ?? show.year,
+        seasonNumber,
         watchedAt: lastWatchedAt?.toISOString() ?? null,
         posterUrl: posterUrlForMedia(show),
       });

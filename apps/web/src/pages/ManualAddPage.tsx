@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Film, Search, Trash2, Tv } from "lucide-react";
+import { CheckCircle2, Film, RefreshCw, Search, Trash2, Tv, Upload } from "lucide-react";
 import type { TmdbSearchResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 
@@ -69,6 +69,8 @@ export function ManualAddPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [media, setMedia] = useState<MediaRecord[]>([]);
+  const [missingPosters, setMissingPosters] = useState<MediaRecord[]>([]);
+  const [posterBusyId, setPosterBusyId] = useState<string | null>(null);
 
   const deletableMedia = useMemo(
     () => media.filter(canDeleteMedia).sort((left, right) => left.title.localeCompare(right.title, "de")),
@@ -79,11 +81,17 @@ export function ManualAddPage() {
     void loadMedia().catch((caught) => {
       setStatus(caught instanceof Error ? caught.message : "Manuell angelegte Titel konnten nicht geladen werden.");
     });
+    void loadMissingPosters().catch(() => undefined);
   }, []);
 
   async function loadMedia() {
     const loaded = await apiRequest<MediaRecord[]>("/api/media");
     setMedia(loaded);
+  }
+
+  async function loadMissingPosters() {
+    const loaded = await apiRequest<MediaRecord[]>("/api/media/missing-posters");
+    setMissingPosters(loaded);
   }
 
   async function search() {
@@ -155,9 +163,50 @@ export function ManualAddPage() {
     try {
       const result = await apiRequest<DeleteMediaResponse>(`/api/media/${mediaId}`, { method: "DELETE" });
       await loadMedia();
+      await loadMissingPosters();
       setStatus(result.message);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Titel konnte nicht geloescht werden.");
+    }
+  }
+
+  async function refreshPoster(mediaId: string, title: string) {
+    setPosterBusyId(mediaId);
+    setStatus(null);
+    try {
+      await apiRequest<MediaRecord>(`/api/media/${mediaId}/poster/refresh`, {
+        method: "POST",
+        body: "{}",
+      });
+      await Promise.all([loadMedia(), loadMissingPosters()]);
+      setStatus(`Poster fuer "${title}" wurde neu von TMDb geladen.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Poster konnte nicht neu geladen werden.");
+    } finally {
+      setPosterBusyId(null);
+    }
+  }
+
+  async function uploadPoster(mediaId: string, title: string, file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    setPosterBusyId(mediaId);
+    setStatus(null);
+    try {
+      const body = new FormData();
+      body.append("poster", file);
+      await apiRequest<MediaRecord>(`/api/media/${mediaId}/poster/upload`, {
+        method: "POST",
+        body,
+      });
+      await Promise.all([loadMedia(), loadMissingPosters()]);
+      setStatus(`Poster fuer "${title}" wurde hochgeladen.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Poster konnte nicht hochgeladen werden.");
+    } finally {
+      setPosterBusyId(null);
     }
   }
 
@@ -279,6 +328,60 @@ export function ManualAddPage() {
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                 Löschen
               </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Fehlende Poster pflegen</h2>
+            <p className="mt-1 text-sm text-slate-400">Lade Poster erneut aus TMDb oder hinterlege ein eigenes JPEG, PNG oder WebP. Uploads werden lokal als kleines WebP gespeichert.</p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
+            onClick={() => void loadMissingPosters()}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Liste aktualisieren
+          </button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {missingPosters.length === 0 ? (
+            <p className="rounded-md border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">Keine Filme oder Serien ohne Poster gefunden.</p>
+          ) : missingPosters.map((item) => (
+            <article key={item.id} className="flex flex-wrap items-center gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
+              <Poster src={item.posterUrl} type={item.type === "movie" ? "movie" : "show"} />
+              <div className="min-w-48 flex-1">
+                <h3 className="truncate font-medium">{item.title}</h3>
+                <p className="text-sm text-slate-400">{mediaLabel(item.type)} · {item.year ?? "ohne Jahr"} · {item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"}</p>
+              </div>
+              <button
+                type="button"
+                disabled={posterBusyId === item.id || !item.tmdbId}
+                className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-700"
+                onClick={() => void refreshPoster(item.id, item.title)}
+                title={!item.tmdbId ? "Dieser Titel hat keine TMDb-ID." : undefined}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                TMDb neu laden
+              </button>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-teal-400 px-3 py-2 text-sm font-medium text-slate-950 hover:bg-teal-300">
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                Datei hochladen
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={posterBusyId === item.id}
+                  onChange={(event) => {
+                    void uploadPoster(item.id, item.title, event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
             </article>
           ))}
         </div>
