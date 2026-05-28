@@ -1,11 +1,11 @@
 /**
- * Purpose: Shared poster thumbnail with a viewport-safe hover/focus preview overlay.
+ * Purpose: Shared poster thumbnail with a large viewport-centered hover/focus preview overlay.
  * Input/Output: Receives an optional poster URL plus media metadata and renders a small poster that can reveal a larger preview.
- * Invariants: The overlay is rendered in a portal so table/card overflow cannot clip it; missing posters must still show a useful placeholder.
- * Debugging: If the preview is misplaced, inspect the thumbnail bounding box and the fixed-position style calculated in `overlayStyle`.
+ * Invariants: The overlay is rendered in a portal so table/card overflow cannot clip it; poster images use object-contain so the full artwork stays visible.
+ * Debugging: If the preview size feels wrong, inspect `overlayStyle` and `posterPanelStyle`; if posters are blank, check the supplied `src`.
  */
 
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Film, Tv } from "lucide-react";
 
@@ -25,34 +25,24 @@ type PosterPreviewProps = {
   focusable?: boolean;
 };
 
-const overlayGap = 14;
-const viewportPadding = 16;
-const overlayWidth = 300;
-const expectedOverlayHeight = 520;
+const overlayStyle: CSSProperties = {
+  left: "50%",
+  top: "50%",
+  transform: "translate(-50%, -50%)",
+  width: "min(50vw, calc(100vw - 2rem))",
+  minWidth: "min(420px, calc(100vw - 2rem))",
+  maxWidth: "760px",
+  maxHeight: "calc(100vh - 2rem)",
+};
+
+const posterPanelStyle: CSSProperties = {
+  height: "min(68vh, 680px)",
+};
 
 function compactDetails(details: Array<string | number | null | undefined | false>) {
   return details
     .filter((detail): detail is string | number => detail !== null && detail !== undefined && detail !== false && String(detail).trim().length > 0)
     .map((detail) => String(detail));
-}
-
-function overlayStyle(anchor: DOMRect | null): CSSProperties {
-  if (!anchor) {
-    return { opacity: 0 };
-  }
-
-  const width = Math.min(overlayWidth, window.innerWidth - viewportPadding * 2);
-  const opensRight = anchor.right + overlayGap + width <= window.innerWidth - viewportPadding;
-  const preferredLeft = opensRight ? anchor.right + overlayGap : anchor.left - overlayGap - width;
-  const left = Math.min(Math.max(preferredLeft, viewportPadding), window.innerWidth - width - viewportPadding);
-  const preferredTop = anchor.top + anchor.height / 2 - expectedOverlayHeight / 2;
-  const top = Math.min(Math.max(preferredTop, viewportPadding), Math.max(viewportPadding, window.innerHeight - expectedOverlayHeight - viewportPadding));
-
-  return {
-    left,
-    top,
-    width,
-  };
 }
 
 export function PosterPreview({
@@ -68,55 +58,23 @@ export function PosterPreview({
   imageClassName = "rounded-md",
   focusable = true,
 }: PosterPreviewProps) {
-  const anchorRef = useRef<HTMLSpanElement | null>(null);
-  const [anchor, setAnchor] = useState<DOMRect | null>(null);
-  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
   const Icon = kind === "movie" ? Film : Tv;
   const details = useMemo(() => compactDetails([typeLabel, year ? year : "ohne Jahr", ...meta]), [meta, typeLabel, year]);
-  const style = useMemo(() => overlayStyle(anchor), [anchor]);
-
-  function refreshAnchor() {
-    setAnchor(anchorRef.current?.getBoundingClientRect() ?? null);
-  }
-
-  function showPreview() {
-    refreshAnchor();
-    setOpen(true);
-  }
-
-  function hidePreview() {
-    setOpen(false);
-  }
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function handleViewportChange() {
-      refreshAnchor();
-    }
-
-    window.addEventListener("scroll", handleViewportChange, true);
-    window.addEventListener("resize", handleViewportChange);
-
-    return () => {
-      window.removeEventListener("scroll", handleViewportChange, true);
-      window.removeEventListener("resize", handleViewportChange);
-    };
-  }, [open]);
+  const open = hovered || focused;
 
   return (
     <>
       <span
-        ref={anchorRef}
         className={`relative block shrink-0 cursor-zoom-in outline-none focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${className}`}
         tabIndex={focusable ? 0 : undefined}
         aria-label={`${title} Poster anzeigen`}
-        onMouseEnter={showPreview}
-        onMouseLeave={hidePreview}
-        onPointerEnter={showPreview}
-        onPointerLeave={hidePreview}
-        onFocus={showPreview}
-        onBlur={hidePreview}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+        onClick={() => setFocused(true)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
       >
         {src ? (
           <img className={`h-full w-full object-cover ring-1 ring-slate-800 ${imageClassName}`} src={src} alt={`${title} Poster`} loading="lazy" />
@@ -130,15 +88,15 @@ export function PosterPreview({
 
       {open && createPortal(
         <aside
-          className="pointer-events-none fixed z-[90] max-h-[calc(100vh-2rem)] overflow-hidden rounded-lg border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-950/80 ring-1 ring-white/10"
-          style={style}
+          className="pointer-events-none fixed z-[90] overflow-hidden rounded-lg border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl shadow-slate-950/80 ring-1 ring-white/10"
+          style={overlayStyle}
           aria-hidden="true"
         >
-          <div className="bg-slate-900">
+          <div className="flex items-center justify-center bg-slate-900 p-3" style={posterPanelStyle}>
             {src ? (
-              <img className="h-80 w-full object-cover" src={src} alt="" />
+              <img className="h-full max-h-full w-full max-w-full object-contain" src={src} alt="" />
             ) : (
-              <div className="flex h-80 w-full items-center justify-center bg-slate-800">
+              <div className="flex h-full w-full items-center justify-center rounded-md bg-slate-800">
                 <Icon className="h-14 w-14 text-slate-500" aria-hidden="true" />
               </div>
             )}
