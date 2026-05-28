@@ -17,9 +17,10 @@ import { ManualAddPage } from "./pages/ManualAddPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SeriesPage } from "./pages/SeriesPage";
 import { SwipePage } from "./pages/SwipePage";
+import { CinemaPage } from "./pages/CinemaPage";
 import "./styles/index.css";
 
-type Page = "dashboard" | "timeline" | "series" | "swipe" | "manual" | "integrations";
+type Page = "dashboard" | "timeline" | "series" | "swipe" | "cinema" | "manual" | "integrations";
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -52,6 +53,7 @@ function App() {
       {active === "timeline" && <TimelinePage />}
       {active === "series" && <SeriesPage />}
       {active === "swipe" && <SwipePage />}
+      {active === "cinema" && <CinemaPage />}
       {active === "manual" && <ManualAddPage />}
       {active === "integrations" && <IntegrationsPage user={user} onUserUpdated={setUser} />}
     </Layout>

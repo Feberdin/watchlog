@@ -151,6 +151,11 @@ export type TmdbRecommendation = TmdbSearchResult & {
   trailerSite: string | null;
 };
 
+export type TmdbCinemaMemoryMovie = TmdbSearchResult & {
+  voteAverage: number | null;
+  voteCount: number | null;
+};
+
 function authHeaders(settings: TmdbSettingsForClient) {
   if (!settings.tmdbBearerToken) {
     throw new Error("TMDb: Bearer Token fehlt. Bitte in den Integrationen speichern.");
@@ -433,6 +438,49 @@ export async function getTmdbSwipeRecommendations(settings: TmdbSettingsForClien
     ...(await getTmdbTrailer(settings, recommendation.type, recommendation.tmdbId)
       .then((trailer) => ({ trailerUrl: trailer?.url ?? null, trailerSite: trailer?.site ?? null }))),
   })));
+}
+
+export async function getTmdbCinemaMemoryMovies(
+  settings: TmdbSettingsForClient,
+  options: { birthYear: number; startAge: number; endAge: number; limit: number },
+): Promise<TmdbCinemaMemoryMovie[]> {
+  const startYear = options.birthYear + options.startAge;
+  const endYear = options.birthYear + options.endAge;
+  const years = Array.from({ length: endYear - startYear + 1 }, (_, index) => startYear + index);
+  const pagesPerYear = Math.ceil(options.limit / Math.max(years.length, 1));
+  const responses = await Promise.all(years.flatMap((year) => (
+    Array.from({ length: pagesPerYear }, (_, index) => tmdbGet<TmdbSearchResponse<TmdbMovieResult>>("/discover/movie", settings, {
+      language: settings.preferredLanguage,
+      include_adult: "false",
+      include_video: "false",
+      sort_by: "popularity.desc",
+      "vote_count.gte": 500,
+      "primary_release_date.gte": `${year}-01-01`,
+      "primary_release_date.lte": `${year}-12-31`,
+      page: index + 1,
+    }).catch(() => ({ results: [] })))
+  )));
+
+  const byTmdbId = new Map<number, TmdbMovieResult>();
+  for (const response of responses) {
+    for (const result of response.results ?? []) {
+      if (!result.id || !result.poster_path) continue;
+      byTmdbId.set(result.id, result);
+    }
+  }
+
+  return Array.from(byTmdbId.values())
+    .sort((left, right) => {
+      const leftScore = (left.vote_count ?? 0) * Math.max(left.vote_average ?? 0, 1);
+      const rightScore = (right.vote_count ?? 0) * Math.max(right.vote_average ?? 0, 1);
+      return rightScore - leftScore;
+    })
+    .slice(0, options.limit)
+    .map((movie) => ({
+      ...movieToSearchResult(movie, settings.imageBaseUrl),
+      voteAverage: typeof movie.vote_average === "number" ? movie.vote_average : null,
+      voteCount: typeof movie.vote_count === "number" ? movie.vote_count : null,
+    }));
 }
 
 export async function getTmdbDetails(settings: TmdbSettingsForClient, type: "movie" | "show", tmdbId: number): Promise<TmdbSearchResult & { runtimeSeconds: number | null; imdbId: string | null }> {

@@ -168,3 +168,15 @@ export type SwipeHistoryItem = {
   posterUrl: string | null;
   tmdbId: string | null;
 };
+
+export type CinemaMemoryCandidate = {
+  id: string;
+  title: string;
+  year: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  tmdbId: string | null;
+  status: "open" | "seen" | "want" | "skip";
+  voteAverage: number | null;
+  voteCount: number | null;
+};

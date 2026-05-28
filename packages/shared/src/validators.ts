@@ -113,6 +113,21 @@ export const swipeActionSchema = z.object({
   action: z.enum(["seen", "skip", "want"]),
 });
 
+export const cinemaCandidatesQuerySchema = z.object({
+  birthYear: z.coerce.number().int().min(1900).max(2020),
+  startAge: z.coerce.number().int().min(0).max(99).default(10),
+  endAge: z.coerce.number().int().min(0).max(99).default(24),
+  limit: z.coerce.number().int().min(10).max(100).default(100),
+}).refine((value) => value.endAge >= value.startAge, {
+  message: "Das Endalter muss groesser oder gleich dem Startalter sein.",
+  path: ["endAge"],
+});
+
+export const cinemaActionSchema = z.object({
+  mediaId: z.string().cuid(),
+  action: z.enum(["seen", "skip", "want"]),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
@@ -126,3 +141,5 @@ export type TmdbImportInput = z.infer<typeof tmdbImportSchema>;
 export type MarkWatchedInput = z.infer<typeof markWatchedSchema>;
 export type SwipeCandidateQueryInput = z.infer<typeof swipeCandidateQuerySchema>;
 export type SwipeActionInput = z.infer<typeof swipeActionSchema>;
+export type CinemaCandidatesQueryInput = z.infer<typeof cinemaCandidatesQuerySchema>;
+export type CinemaActionInput = z.infer<typeof cinemaActionSchema>;
