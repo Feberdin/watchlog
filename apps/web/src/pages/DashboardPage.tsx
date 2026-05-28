@@ -69,9 +69,9 @@ function PosterTile({ item, index, dense }: { item: DashboardPoster; index: numb
         <p className="mt-1 text-xs text-slate-300">{item.year ?? "ohne Jahr"} · {typeLabel(item.type)}</p>
       </div>
       {item.type === "season" && item.seasonNumber !== null && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-slate-950/10">
-          <span className="rounded-md bg-slate-950/45 px-3 py-1 text-4xl font-black text-white/80 ring-1 ring-white/10 sm:text-5xl">
-            S{String(item.seasonNumber).padStart(2, "0")}
+        <div className="pointer-events-none absolute right-2 top-2 z-10">
+          <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-slate-950/55 px-2 text-lg font-black text-white/85 ring-1 ring-white/15">
+            {item.seasonNumber}
           </span>
         </div>
       )}
