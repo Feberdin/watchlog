@@ -29,7 +29,7 @@ export function Layout({ children, onLogout, active, setActive }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-950/95">
+      <header className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
           <button className="flex items-center gap-2 text-left" onClick={() => setActive("dashboard")}>
             <Film className="h-6 w-6 text-accent" aria-hidden="true" />

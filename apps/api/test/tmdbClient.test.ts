@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildTmdbImageUrl, getTmdbSeasonEpisodes, getTmdbSwipeRecommendations, getTmdbTvCatalog } from "../src/services/tmdbClient.js";
+import { buildTmdbImageUrl, getTmdbSeasonEpisodes, getTmdbSwipeRecommendations, getTmdbTvCatalog, searchTmdb } from "../src/services/tmdbClient.js";
 
 describe("buildTmdbImageUrl", () => {
   it("builds a TMDb image URL with a size segment", () => {
@@ -40,6 +40,8 @@ describe("TMDb TV catalog", () => {
           name: "Stranger Things",
           first_air_date: "2016-07-15",
           poster_path: "/show.jpg",
+          genres: [{ id: 18, name: "Drama" }],
+          credits: { cast: [{ name: "Millie Bobby Brown", order: 1 }, { name: "Winona Ryder", order: 0 }] },
           external_ids: { imdb_id: "tt4574334", tvdb_id: 305288 },
           seasons: [{ id: 1, name: "Staffel 1", season_number: 1, air_date: "2016-07-15", episode_count: 8 }],
         }),
@@ -60,12 +62,53 @@ describe("TMDb TV catalog", () => {
     expect(catalog).toMatchObject({
       title: "Stranger Things",
       startYear: 2016,
+      genres: ["Drama"],
+      cast: ["Winona Ryder", "Millie Bobby Brown"],
       imdbId: "tt4574334",
       tvdbId: "305288",
     });
     expect(catalog.seasons[0]).toMatchObject({ seasonNumber: 1, startYear: 2016, episodeCount: 8 });
     expect(episodes[0]).toMatchObject({ title: "Kapitel eins", seasonNumber: 1, episodeNumber: 1, year: 2016, runtimeSeconds: 2940 });
-    expect(firstUrl.searchParams.get("append_to_response")).toBe("external_ids");
+    expect(firstUrl.searchParams.get("append_to_response")).toBe("external_ids,credits");
+  });
+
+  it("can enrich search results with TMDb cast sorted by relevance", async () => {
+    const settings = {
+      tmdbBearerToken: "token",
+      preferredLanguage: "de-DE",
+      fallbackLanguage: "en-US",
+      imageBaseUrl: "https://image.tmdb.org/t/p",
+    };
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [{
+            id: 603,
+            title: "The Matrix",
+            release_date: "1999-03-31",
+            genre_ids: [28, 878],
+            poster_path: "/matrix.jpg",
+          }],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 603,
+          title: "The Matrix",
+          genres: [{ id: 28, name: "Action" }],
+          credits: { cast: [{ name: "Keanu Reeves", order: 0 }, { name: "Carrie-Anne Moss", order: 1 }] },
+        }),
+      } as Response);
+
+    const results = await searchTmdb(settings, "matrix", "movie", null, { includeCast: true });
+
+    expect(results[0]).toMatchObject({
+      genres: ["Action"],
+      cast: ["Keanu Reeves", "Carrie-Anne Moss"],
+    });
   });
 });
 

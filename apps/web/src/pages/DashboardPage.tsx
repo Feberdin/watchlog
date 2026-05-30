@@ -9,12 +9,15 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Clapperboard, Film, Repeat2, Tv } from "lucide-react";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
 
 type DashboardPoster = {
   id: string;
   title: string;
   type: string;
   year: number | null;
+  genres: string[];
+  cast: string[];
   seasonNumber: number | null;
   watchedAt: string | null;
   addedAt?: string;
@@ -65,13 +68,14 @@ function PosterTile({ item, index, dense }: { item: DashboardPoster; index: numb
         className="h-full w-full"
         typeLabel={label}
         year={item.year}
-        meta={item.seasonNumber !== null ? [`Staffel ${item.seasonNumber}`] : []}
+        meta={[genreLabel(item.genres), castLabel(item.cast), item.seasonNumber !== null ? `Staffel ${item.seasonNumber}` : null]}
+        cast={item.cast}
         badge={seasonBadge}
         imageClassName="rounded-none transition duration-300 group-hover:scale-105"
       />
       <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
         <h3 className="line-clamp-2 text-sm font-medium">{item.title}</h3>
-        <p className="mt-1 text-xs text-slate-300">{item.year ?? "ohne Jahr"} · {label}</p>
+        <p className="mt-1 text-xs text-slate-300">{[item.year ?? "ohne Jahr", label, metadataLabel(item.genres, 2)].filter(Boolean).join(" · ")}</p>
       </div>
     </article>
   );

@@ -136,6 +136,8 @@ export const mediaRoutes: FastifyPluginAsync = async (app) => {
         originalTitle: detail.originalTitle,
         year: detail.year,
         overview: detail.overview,
+        genres: detail.genres,
+        cast: detail.cast,
         runtimeSeconds: detail.runtimeSeconds,
         imdbId: detail.imdbId,
         posterPath: detail.posterPath,

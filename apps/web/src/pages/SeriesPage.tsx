@@ -10,6 +10,7 @@ import { CheckCircle2, ChevronDown, ChevronRight, RefreshCw, Search } from "luci
 import type { SeriesCatalogItem, SeriesEpisode, SeriesSeason } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
 
 const SHOW_SPECIALS_STORAGE_KEY = "watchlog.showSpecials";
 
@@ -56,7 +57,7 @@ export function SeriesPage() {
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return series;
-    return series.filter((item) => item.title.toLowerCase().includes(normalized));
+    return series.filter((item) => [item.title, ...item.genres, ...item.cast].join(" ").toLowerCase().includes(normalized));
   }, [query, series]);
 
   async function syncJellyfin() {
@@ -156,7 +157,8 @@ export function SeriesPage() {
                   className="h-28 w-20"
                   typeLabel="Serie"
                   year={item.startYear}
-                  meta={[`${item.watchedEpisodes} / ${item.totalEpisodes} Episoden`, item.complete ? "komplett gesehen" : "offen"]}
+                  meta={[genreLabel(item.genres), castLabel(item.cast), `${item.watchedEpisodes} / ${item.totalEpisodes} Episoden`, item.complete ? "komplett gesehen" : "offen"]}
+                  cast={item.cast}
                 />
                 <div className="min-w-0 flex-1">
                   <button className="flex min-w-0 items-center gap-2 text-left font-medium" onClick={() => setExpandedSeries((current) => ({ ...current, [item.id]: !open }))}>
@@ -164,7 +166,9 @@ export function SeriesPage() {
                     <span className="truncate">{item.title}{item.startYear ? ` (${item.startYear})` : ""}</span>
                     {item.complete && <CheckCircle2 className="h-5 w-5 text-teal-300" aria-label="Komplett gesehen" />}
                   </button>
-                  <p className="mt-1 text-sm text-slate-400">{item.watchedEpisodes} / {item.totalEpisodes} Episoden gesehen</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {[`${item.watchedEpisodes} / ${item.totalEpisodes} Episoden gesehen`, metadataLabel(item.genres)].filter(Boolean).join(" · ")}
+                  </p>
                   {!item.complete && (
                     <button
                       className="mt-3 rounded-md bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700 disabled:cursor-wait disabled:opacity-60"
@@ -191,6 +195,7 @@ export function SeriesPage() {
                             {season.complete && <CheckCircle2 className="h-4 w-4 text-teal-300" aria-label="Staffel komplett gesehen" />}
                           </button>
                           <div className="flex items-center gap-3 text-sm text-slate-400">
+                            {metadataLabel(season.genres, 2) && <span>{metadataLabel(season.genres, 2)}</span>}
                             <span>{season.watchedEpisodes} / {season.totalEpisodes}</span>
                             {!season.complete && (
                               <button
@@ -207,7 +212,10 @@ export function SeriesPage() {
                           <div className="divide-y divide-slate-800">
                             {season.episodes.map((episode) => (
                               <div key={episode.id} className="grid gap-2 px-6 py-3 sm:grid-cols-[1fr_auto_auto]">
-                                <p className={episode.watched ? "text-slate-300" : "text-slate-100"}>{episodeTitle(episode)}</p>
+                                <p className={episode.watched ? "text-slate-300" : "text-slate-100"}>
+                                  {episodeTitle(episode)}
+                                  {metadataLabel(episode.genres, 2) ? <span className="ml-2 text-sm text-slate-500">· {metadataLabel(episode.genres, 2)}</span> : null}
+                                </p>
                                 <span className="text-sm text-slate-400">{watchedDate(episode.watchedAt)}</span>
                                 {!episode.watched && (
                                   <button

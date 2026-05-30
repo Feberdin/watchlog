@@ -6,10 +6,11 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, RefreshCw, Search, Trash2, Upload } from "lucide-react";
-import type { TmdbSearchResult } from "@watchlog/shared";
+import { CheckCircle2, Download, RefreshCw, Search, Trash2, Upload } from "lucide-react";
+import type { TmdbJellyseerrBulkRequestResult, TmdbSearchResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
 
 type DatePrecision = "exact" | "date" | "month" | "year" | "unknown";
 
@@ -18,6 +19,8 @@ type MediaRecord = {
   type: "movie" | "show" | "season" | "episode";
   title: string;
   year: number | null;
+  genres: string[];
+  cast: string[];
   posterUrl: string | null;
   tmdbId: string | null;
   jellyfinItemId: string | null;
@@ -75,6 +78,7 @@ export function ManualAddPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [media, setMedia] = useState<MediaRecord[]>([]);
   const [missingPosters, setMissingPosters] = useState<MediaRecord[]>([]);
   const [posterBusyId, setPosterBusyId] = useState<string | null>(null);
@@ -213,6 +217,31 @@ export function ManualAddPage() {
     }
   }
 
+  async function requestSelectedInJellyseerr() {
+    const selectedResults = results.filter((result) => selectedKeys.has(resultKey(result)));
+    if (selectedResults.length === 0) {
+      setStatus("Bitte mindestens einen TMDb-Treffer fuer Jellyseerr markieren.");
+      return;
+    }
+
+    setRequesting(true);
+    setStatus(`${selectedResults.length} Titel werden bei Jellyseerr angefragt...`);
+    try {
+      const response = await apiRequest<TmdbJellyseerrBulkRequestResult>("/api/metadata/tmdb/request-jellyseerr", {
+        method: "POST",
+        body: JSON.stringify({
+          items: selectedResults.map((result) => ({ type: result.type, tmdbId: result.tmdbId })),
+        }),
+      });
+      await loadMedia();
+      setStatus(`${response.requested} neu angefragt, ${response.alreadyRequested} bereits vorhanden, ${response.failed} fehlgeschlagen.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Jellyseerr-Massenanfrage ist fehlgeschlagen.");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
   async function deleteMedia(mediaId: string, title: string) {
     const confirmed = window.confirm(`"${title}" und deine zugehoerigen manuellen WatchEvents loeschen?`);
     if (!confirmed) {
@@ -313,14 +342,17 @@ export function ManualAddPage() {
                     className="h-32 w-20"
                     typeLabel={mediaLabel(result.type)}
                     year={result.year}
-                    meta={[`TMDb ${result.tmdbId}`]}
+                    meta={[genreLabel(result.genres), castLabel(result.cast), `TMDb ${result.tmdbId}`]}
+                    cast={result.cast}
                     overview={result.overview}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-3">
                       <span>
                         <span className="block font-medium">{result.title}</span>
-                        <span className="mt-1 block text-sm text-slate-400">{mediaLabel(result.type)} · {result.year ?? "ohne Jahr"} · TMDb {result.tmdbId}</span>
+                        <span className="mt-1 block text-sm text-slate-400">
+                          {[mediaLabel(result.type), result.year ?? "ohne Jahr", metadataLabel(result.genres), `TMDb ${result.tmdbId}`].filter(Boolean).join(" · ")}
+                        </span>
                       </span>
                       <label className="inline-flex shrink-0 items-center gap-2 rounded-md bg-slate-900 px-2 py-1 text-xs text-slate-200 ring-1 ring-slate-700">
                         <input
@@ -395,18 +427,27 @@ export function ManualAddPage() {
           </label>
           {status && <p className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm">{status}</p>}
           <div className="flex flex-wrap gap-2">
-            <button className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || !selected}>
+            <button className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || requesting || !selected}>
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
               {saving ? "Speichern..." : "Als gesehen speichern"}
             </button>
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 font-medium text-slate-100 disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-700"
-              disabled={saving || selectedKeys.size === 0}
+              disabled={saving || requesting || selectedKeys.size === 0}
               onClick={() => void submitSelected()}
             >
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
               Auswahl speichern ({selectedKeys.size})
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-md bg-amber-300 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 hover:bg-amber-200"
+              disabled={saving || requesting || selectedKeys.size === 0}
+              onClick={() => void requestSelectedInJellyseerr()}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Auswahl bei Jellyseerr anfragen ({selectedKeys.size})
             </button>
           </div>
         </form>
@@ -427,11 +468,14 @@ export function ManualAddPage() {
                 className="h-32 w-20"
                 typeLabel={mediaLabel(item.type)}
                 year={item.year}
-                meta={[item.tmdbId ? `TMDb ${item.tmdbId}` : item.metadataSource]}
+                meta={[genreLabel(item.genres), castLabel(item.cast), item.tmdbId ? `TMDb ${item.tmdbId}` : item.metadataSource]}
+                cast={item.cast}
               />
               <div className="min-w-0 flex-1">
                 <h3 className="truncate font-medium">{item.title}</h3>
-                <p className="text-sm text-slate-400">{mediaLabel(item.type)} · {item.year ?? "ohne Jahr"} · {item.tmdbId ? `TMDb ${item.tmdbId}` : item.metadataSource}</p>
+                <p className="text-sm text-slate-400">
+                  {[mediaLabel(item.type), item.year ?? "ohne Jahr", metadataLabel(item.genres), item.tmdbId ? `TMDb ${item.tmdbId}` : item.metadataSource].filter(Boolean).join(" · ")}
+                </p>
               </div>
               <button
                 type="button"
@@ -473,11 +517,14 @@ export function ManualAddPage() {
                 className="h-32 w-20"
                 typeLabel={mediaLabel(item.type)}
                 year={item.year}
-                meta={[item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"]}
+                meta={[genreLabel(item.genres), castLabel(item.cast), item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"]}
+                cast={item.cast}
               />
               <div className="min-w-48 flex-1">
                 <h3 className="truncate font-medium">{item.title}</h3>
-                <p className="text-sm text-slate-400">{mediaLabel(item.type)} · {item.year ?? "ohne Jahr"} · {item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"}</p>
+                <p className="text-sm text-slate-400">
+                  {[mediaLabel(item.type), item.year ?? "ohne Jahr", metadataLabel(item.genres), item.tmdbId ? `TMDb ${item.tmdbId}` : "ohne TMDb-ID"].filter(Boolean).join(" · ")}
+                </p>
               </div>
               <button
                 type="button"

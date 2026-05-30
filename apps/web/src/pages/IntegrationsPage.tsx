@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import type { AuthUser, IntegrationTestResponse, JellyfinWatchedImportResult, TmdbSearchResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
 
 type JellyfinSettings = {
   jellyfinBaseUrl: string | null;
@@ -285,13 +286,14 @@ export function IntegrationsPage({ user, onUserUpdated }: IntegrationsPageProps)
                 className="h-28 w-20"
                 typeLabel={result.type === "movie" ? "Film" : "Serie"}
                 year={result.year}
-                meta={[`TMDb ${result.tmdbId}`]}
+                meta={[genreLabel(result.genres), castLabel(result.cast), `TMDb ${result.tmdbId}`]}
+                cast={result.cast}
                 overview={result.overview}
                 imageClassName="rounded"
               />
               <div className="min-w-0 flex-1">
                 <h3 className="font-medium">{result.title}</h3>
-                <p className="text-sm text-slate-400">{result.year ?? "ohne Jahr"} · TMDb {result.tmdbId}</p>
+                <p className="text-sm text-slate-400">{[result.year ?? "ohne Jahr", metadataLabel(result.genres), `TMDb ${result.tmdbId}`].filter(Boolean).join(" · ")}</p>
                 <p className="mt-2 line-clamp-3 text-sm text-slate-300">{result.overview ?? "Keine Beschreibung vorhanden."}</p>
                 <button className="mt-3 rounded-md bg-slate-800 px-3 py-2 text-sm" onClick={() => void importTmdb(result)}>Als Medium speichern</button>
               </div>

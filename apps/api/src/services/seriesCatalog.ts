@@ -40,6 +40,17 @@ function providerId(item: JellyfinWatchedItem, key: string): string | null {
   return value && value.trim() ? value.trim() : null;
 }
 
+function normalizedTextList(values: string[] | null | undefined): string[] {
+  const unique = new Map<string, string>();
+  for (const value of values ?? []) {
+    const normalized = value.trim();
+    if (!normalized) continue;
+    unique.set(normalized.toLocaleLowerCase("de-DE"), normalized);
+  }
+
+  return [...unique.values()];
+}
+
 function parsedLastPlayedAt(item: JellyfinWatchedItem): Date | null {
   const raw = item.UserData?.LastPlayedDate;
   if (!raw) return null;
@@ -114,6 +125,7 @@ async function upsertEpisodeFromJellyfin(
     title: seriesTitle,
     ...(seriesItem?.ProductionYear ? { year: seriesItem.ProductionYear } : {}),
     ...(seriesItem?.Overview ? { overview: seriesItem.Overview } : {}),
+    genres: normalizedTextList(seriesItem?.Genres),
     ...(seriesTmdbId ? { tmdbId: seriesTmdbId } : {}),
     ...(seriesImdbId ? { imdbId: seriesImdbId } : {}),
     ...(seriesTvdbId ? { tvdbId: seriesTvdbId } : {}),
@@ -147,6 +159,7 @@ async function upsertEpisodeFromJellyfin(
         title: seriesTitle,
         year: seriesItem?.ProductionYear ?? null,
         overview: seriesItem?.Overview ?? null,
+        genres: normalizedTextList(seriesItem?.Genres),
         tmdbId: seriesTmdbId,
         imdbId: seriesImdbId,
         tvdbId: seriesTvdbId,
@@ -161,6 +174,7 @@ async function upsertEpisodeFromJellyfin(
   const episodeImdbId = providerId(item, "Imdb");
   const episodeTvdbId = providerId(item, "Tvdb");
   const episodePosterUrl = jellyfinPrimaryImageUrl(baseUrl, item) ?? (itemDetails ? jellyfinPrimaryImageUrl(baseUrl, itemDetails) : null);
+  const episodeGenres = normalizedTextList(item.Genres ?? itemDetails?.Genres ?? seriesItem?.Genres);
   const episode = await prisma.media.upsert({
     where: { jellyfinItemId: item.Id },
     update: {
@@ -171,6 +185,7 @@ async function upsertEpisodeFromJellyfin(
       seasonNumber: item.ParentIndexNumber ?? itemDetails?.ParentIndexNumber ?? null,
       episodeNumber: item.IndexNumber ?? itemDetails?.IndexNumber ?? null,
       overview: item.Overview ?? itemDetails?.Overview ?? null,
+      genres: episodeGenres,
       runtimeSeconds: ticksToSeconds(item.RunTimeTicks ?? itemDetails?.RunTimeTicks),
       ...(episodeTmdbId ? { tmdbId: episodeTmdbId } : {}),
       ...(episodeImdbId ? { imdbId: episodeImdbId } : {}),
@@ -189,6 +204,7 @@ async function upsertEpisodeFromJellyfin(
       seasonNumber: item.ParentIndexNumber ?? itemDetails?.ParentIndexNumber ?? null,
       episodeNumber: item.IndexNumber ?? itemDetails?.IndexNumber ?? null,
       overview: item.Overview ?? itemDetails?.Overview ?? null,
+      genres: episodeGenres,
       runtimeSeconds: ticksToSeconds(item.RunTimeTicks ?? itemDetails?.RunTimeTicks),
       tmdbId: episodeTmdbId,
       imdbId: episodeImdbId,
@@ -267,6 +283,8 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
         tmdbId: show.tmdbId ?? String(catalog.tmdbId),
         year: show.year ?? catalog.startYear,
         overview: show.overview ?? catalog.overview,
+        genres: catalog.genres.length > 0 ? catalog.genres : show.genres,
+        cast: catalog.cast.length > 0 ? catalog.cast : show.cast,
         imdbId: show.imdbId ?? catalog.imdbId,
         tvdbId: show.tvdbId ?? catalog.tvdbId,
         posterUrl: show.posterUrl ?? catalog.posterUrl,
@@ -294,6 +312,8 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
             data: {
               ...(existing.year ? {} : { year: episode.year }),
               ...(existing.overview ? {} : { overview: episode.overview }),
+              ...(existing.genres.length > 0 ? {} : { genres: catalog.genres }),
+              ...(existing.cast.length > 0 ? {} : { cast: catalog.cast }),
               ...(existing.runtimeSeconds ? {} : { runtimeSeconds: episode.runtimeSeconds }),
               ...(existing.tmdbId ? {} : { tmdbId: String(episode.tmdbId) }),
               ...(existing.posterUrl ? {} : { posterUrl: episode.posterUrl ?? season.posterUrl }),
@@ -313,6 +333,8 @@ async function enrichSeriesFromTmdb(prisma: PrismaClient, tmdbSettings: TmdbSett
             title: episode.title,
             year: episode.year,
             overview: episode.overview,
+            genres: catalog.genres,
+            cast: catalog.cast,
             runtimeSeconds: episode.runtimeSeconds,
             tmdbId: String(episode.tmdbId),
             parentMediaId: show.id,
@@ -431,6 +453,8 @@ export async function getSeriesCatalog(prisma: PrismaClient, userId: string, opt
       const current = seasons.get(seasonNumber) ?? {
         seasonNumber,
         startYear: null,
+        genres: show.genres,
+        cast: show.cast,
         episodes: [],
         watchedEpisodes: 0,
         totalEpisodes: 0,
@@ -440,6 +464,8 @@ export async function getSeriesCatalog(prisma: PrismaClient, userId: string, opt
         id: episode.id,
         title: episode.title,
         year: episode.year,
+        genres: episode.genres.length > 0 ? episode.genres : show.genres,
+        cast: episode.cast.length > 0 ? episode.cast : show.cast,
         seasonNumber: episode.seasonNumber,
         episodeNumber: episode.episodeNumber,
         watched: Boolean(watchedEvent),
@@ -463,6 +489,8 @@ export async function getSeriesCatalog(prisma: PrismaClient, userId: string, opt
       id: show.id,
       title: show.title,
       startYear: show.year,
+      genres: show.genres,
+      cast: show.cast,
       posterUrl: show.posterUrl,
       watchedEpisodes,
       totalEpisodes,

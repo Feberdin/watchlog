@@ -19,6 +19,8 @@ type CollageItem = {
   title: string;
   type: "movie" | "show" | "season";
   year: number | null;
+  genres: string[];
+  cast: string[];
   seasonNumber: number | null;
   watchedAt: string | null;
   addedAt: string;
@@ -114,6 +116,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         id: event.id,
         title: event.media.title,
         type: event.media.type,
+        genres: event.media.genres,
+        cast: event.media.cast,
         watchedAt: event.watchedAt?.toISOString() ?? null,
         seasonNumber: event.media.seasonNumber,
         datePrecision: event.datePrecision,
@@ -128,18 +132,20 @@ function buildDashboardCollage(
     mediaId: string;
     watchedAt: Date | null;
     createdAt: Date;
-    media: { id: string; title: string; type: string; year: number | null; posterUrl: string | null };
+    media: { id: string; title: string; type: string; year: number | null; genres: string[]; cast: string[]; posterUrl: string | null };
   }>,
   showEvents: Array<{
     mediaId: string;
     watchedAt: Date | null;
     createdAt: Date;
-    media: { id: string; title: string; type: string; year: number | null; posterUrl: string | null };
+    media: { id: string; title: string; type: string; year: number | null; genres: string[]; cast: string[]; posterUrl: string | null };
   }>,
   shows: Array<{
     id: string;
     title: string;
     year: number | null;
+    genres: string[];
+    cast: string[];
     posterUrl: string | null;
     children: Array<{
       seasonNumber: number | null;
@@ -153,6 +159,8 @@ function buildDashboardCollage(
     title: event.media.title,
     type: "movie",
     year: event.media.year,
+    genres: event.media.genres,
+    cast: event.media.cast,
     seasonNumber: null,
     watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
     addedAt: event.createdAt.toISOString(),
@@ -164,6 +172,8 @@ function buildDashboardCollage(
     title: event.media.title,
     type: "show",
     year: event.media.year,
+    genres: event.media.genres,
+    cast: event.media.cast,
     seasonNumber: null,
     watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
     addedAt: event.createdAt.toISOString(),
@@ -201,6 +211,8 @@ function buildDashboardCollage(
         title: `${show.title} - Staffel ${seasonNumber}`,
         type: "season",
         year: firstKnownYear(episodes) ?? show.year,
+        genres: show.genres,
+        cast: show.cast,
         seasonNumber,
         watchedAt: lastWatchedAt?.toISOString() ?? null,
         addedAt: lastAddedAt.toISOString(),

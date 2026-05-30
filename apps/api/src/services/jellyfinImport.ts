@@ -34,11 +34,22 @@ type ImportCounters = {
   failed: number;
 };
 
-type SeriesCache = Map<string, { id: string; title: string; posterUrl: string | null }>;
+type SeriesCache = Map<string, { id: string; title: string; genres: string[]; posterUrl: string | null }>;
 
 function providerId(item: JellyfinWatchedItem, key: string): string | null {
   const value = item.ProviderIds?.[key] ?? item.ProviderIds?.[key.toLowerCase()] ?? item.ProviderIds?.[key.toUpperCase()];
   return value && value.trim() ? value.trim() : null;
+}
+
+function normalizedTextList(values: string[] | null | undefined): string[] {
+  const unique = new Map<string, string>();
+  for (const value of values ?? []) {
+    const normalized = value.trim();
+    if (!normalized) continue;
+    unique.set(normalized.toLocaleLowerCase("de-DE"), normalized);
+  }
+
+  return [...unique.values()];
 }
 
 function parseLastPlayedDate(item: JellyfinWatchedItem): Date | null {
@@ -103,6 +114,7 @@ async function importOneWatchedItem(
       series = {
         id: seriesId,
         title: seriesItem?.Name ?? seriesName ?? "Unbekannte Serie",
+        genres: normalizedTextList(seriesItem?.Genres),
         posterUrl: seriesItem ? jellyfinPrimaryImageUrl(baseUrl, seriesItem) : null,
       };
       seriesCache.set(seriesId, series);
@@ -113,6 +125,7 @@ async function importOneWatchedItem(
       where: { jellyfinItemId: series.id },
       update: {
         title: series.title,
+        genres: series.genres,
         posterUrl: series.posterUrl,
         metadataSource: "jellyfin",
         metadataLastSyncedAt: new Date(),
@@ -120,6 +133,7 @@ async function importOneWatchedItem(
       create: {
         type: "show",
         title: series.title,
+        genres: series.genres,
         jellyfinItemId: series.id,
         posterUrl: series.posterUrl,
         metadataSource: "jellyfin",
@@ -138,6 +152,7 @@ async function importOneWatchedItem(
     title: item.Name,
     year: item.ProductionYear ?? null,
     overview: item.Overview ?? null,
+    genres: normalizedTextList(item.Genres ?? itemDetails?.Genres),
     runtimeSeconds: ticksToSeconds(item.RunTimeTicks),
     tmdbId: itemTmdbId,
     imdbId: itemImdbId,

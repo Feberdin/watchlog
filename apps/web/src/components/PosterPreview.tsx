@@ -19,6 +19,7 @@ type PosterPreviewProps = {
   typeLabel: string;
   year?: number | null;
   meta?: Array<string | number | null | undefined | false>;
+  cast?: string[];
   overview?: string | null;
   badge?: ReactNode;
   imageClassName?: string;
@@ -53,6 +54,7 @@ export function PosterPreview({
   typeLabel,
   year,
   meta = [],
+  cast = [],
   overview,
   badge,
   imageClassName = "rounded-md",
@@ -62,6 +64,7 @@ export function PosterPreview({
   const [focused, setFocused] = useState(false);
   const Icon = kind === "movie" ? Film : Tv;
   const details = useMemo(() => compactDetails([typeLabel, year ? year : "ohne Jahr", ...meta]), [meta, typeLabel, year]);
+  const castDetails = useMemo(() => compactDetails(cast).slice(0, 10), [cast]);
   const open = hovered || focused;
 
   return (
@@ -115,6 +118,12 @@ export function PosterPreview({
             <p className="line-clamp-5 text-sm leading-6 text-slate-300">
               {overview?.trim() || "Keine Beschreibung vorhanden."}
             </p>
+            {castDetails.length > 0 && (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Besetzung</p>
+                <p className="mt-1 line-clamp-3 text-sm leading-6 text-slate-300">{castDetails.join(", ")}</p>
+              </div>
+            )}
           </div>
         </aside>,
         document.body,

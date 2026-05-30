@@ -29,6 +29,7 @@ export type JellyfinWatchedItem = {
   Type?: string;
   ProductionYear?: number;
   Overview?: string;
+  Genres?: string[];
   RunTimeTicks?: number;
   ProviderIds?: Record<string, string | undefined>;
   SeriesId?: string;
@@ -120,7 +121,7 @@ export async function listWatchedJellyfinItems(
     url.searchParams.set("Recursive", "true");
     url.searchParams.set("IncludeItemTypes", "Movie,Episode");
     url.searchParams.set("Filters", "IsPlayed");
-    url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
+    url.searchParams.set("Fields", "ProviderIds,Overview,Genres,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
     url.searchParams.set("SortBy", "DatePlayed");
     url.searchParams.set("SortOrder", "Descending");
     url.searchParams.set("StartIndex", String(startIndex));
@@ -153,7 +154,7 @@ export async function listAllJellyfinEpisodes(
     const url = new URL(`${normalizedBaseUrl}/Users/${encodeURIComponent(jellyfinUserId)}/Items`);
     url.searchParams.set("Recursive", "true");
     url.searchParams.set("IncludeItemTypes", "Episode");
-    url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
+    url.searchParams.set("Fields", "ProviderIds,Overview,Genres,RunTimeTicks,UserData,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
     url.searchParams.set("SortBy", "SeriesSortName,ParentIndexNumber,IndexNumber");
     url.searchParams.set("SortOrder", "Ascending");
     url.searchParams.set("StartIndex", String(startIndex));
@@ -179,7 +180,7 @@ export async function getJellyfinItem(
 ): Promise<JellyfinWatchedItem | null> {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Jellyfin");
   const url = new URL(`${normalizedBaseUrl}/Items/${encodeURIComponent(itemId)}`);
-  url.searchParams.set("Fields", "ProviderIds,Overview,RunTimeTicks,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
+  url.searchParams.set("Fields", "ProviderIds,Overview,Genres,RunTimeTicks,ProductionYear,SeriesName,SeriesId,ParentIndexNumber,IndexNumber,ImageTags");
 
   return fetchJson<JellyfinWatchedItem>("Jellyfin", url.toString(), { headers: jellyfinHeaders(apiKey) });
 }

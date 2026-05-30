@@ -21,6 +21,9 @@ export const nullableTrimmedString = z.preprocess(
   z.string().trim().min(1).nullable().optional(),
 );
 
+const genreListSchema = z.array(z.string().trim().min(1).max(80)).max(30).default([]);
+const castListSchema = z.array(z.string().trim().min(1).max(120)).max(30).default([]);
+
 export const datePrecisionSchema = z.enum(DATE_PRECISIONS);
 export const mediaTypeSchema = z.enum(MEDIA_TYPES);
 export const watchEventSourceSchema = z.enum(WATCH_EVENT_SOURCES);
@@ -50,6 +53,8 @@ export const manualMediaSchema = z.object({
   imdbId: nullableTrimmedString,
   jellyfinItemId: nullableTrimmedString,
   overview: nullableTrimmedString,
+  genres: genreListSchema,
+  cast: castListSchema,
   runtimeSeconds: z.number().int().positive().nullable().optional(),
   posterUrl: nullableTrimmedString,
 });
@@ -98,6 +103,10 @@ export const tmdbImportSchema = z.object({
   tmdbId: z.coerce.number().int().positive(),
 });
 
+export const tmdbBulkJellyseerrRequestSchema = z.object({
+  items: z.array(tmdbImportSchema).min(1).max(50),
+});
+
 export const markWatchedSchema = z.object({
   mediaIds: z.array(z.string().cuid()).min(1).max(500),
   watchedAt: z.preprocess(emptyStringToNull, z.string().trim().min(1).nullable().optional()),
@@ -138,6 +147,7 @@ export type TmdbSettingsInput = z.infer<typeof tmdbSettingsSchema>;
 export type JellyseerrSettingsInput = z.infer<typeof jellyseerrSettingsSchema>;
 export type TmdbSearchInput = z.infer<typeof tmdbSearchSchema>;
 export type TmdbImportInput = z.infer<typeof tmdbImportSchema>;
+export type TmdbBulkJellyseerrRequestInput = z.infer<typeof tmdbBulkJellyseerrRequestSchema>;
 export type MarkWatchedInput = z.infer<typeof markWatchedSchema>;
 export type SwipeCandidateQueryInput = z.infer<typeof swipeCandidateQuerySchema>;
 export type SwipeActionInput = z.infer<typeof swipeActionSchema>;

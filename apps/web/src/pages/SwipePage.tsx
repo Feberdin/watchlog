@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SwipeActionResult, SwipeCandidate, SwipeHistoryItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
 
 type SwipeAction = "seen" | "skip" | "want";
 
@@ -223,14 +224,20 @@ export function SwipePage() {
                   <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium">
                     <span className="rounded bg-teal-300 px-2 py-1 text-slate-950">{bucketLabel(current.recommendationBucket)}</span>
                     <span className="rounded bg-slate-900/90 px-2 py-1 text-slate-200">{current.type === "movie" ? "Film" : "Serie"}</span>
+                    {current.genres.slice(0, 3).map((genre) => (
+                      <span key={genre} className="rounded bg-slate-900/90 px-2 py-1 text-slate-200">{genre}</span>
+                    ))}
                   </div>
                   <h2 className="text-3xl font-semibold leading-tight drop-shadow">{current.title}</h2>
                   <p className="mt-2 text-sm text-slate-300">
-                    {[current.year, runtimeLabel(current.runtimeSeconds), current.voteCount ? `${current.voteCount} Stimmen` : null].filter(Boolean).join(" · ") || "Keine Laufzeit/Jahr hinterlegt"}
+                    {[current.year, runtimeLabel(current.runtimeSeconds), metadataLabel(current.genres), current.voteCount ? `${current.voteCount} Stimmen` : null].filter(Boolean).join(" · ") || "Keine Laufzeit/Jahr hinterlegt"}
                   </p>
                   <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-200">
                     {current.overview || "Keine Beschreibung vorhanden."}
                   </p>
+                  {current.cast.length > 0 && (
+                    <p className="mt-2 line-clamp-2 text-sm text-slate-300">Besetzung: {current.cast.slice(0, 5).join(", ")}</p>
+                  )}
                   <button
                     className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-slate-950 disabled:bg-slate-700 disabled:text-slate-400"
                     disabled={!current.trailerUrl}
@@ -292,13 +299,15 @@ export function SwipePage() {
                 className="h-20 w-14"
                 typeLabel={item.type === "movie" ? "Film" : "Serie"}
                 year={item.year}
-                meta={[actionText[item.action], item.tmdbId ? `TMDb ${item.tmdbId}` : null]}
+                meta={[genreLabel(item.genres), castLabel(item.cast), actionText[item.action], item.tmdbId ? `TMDb ${item.tmdbId}` : null]}
+                cast={item.cast}
                 imageClassName="rounded"
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{item.title}</p>
                 <p className="text-xs text-slate-400">
                   {item.type === "movie" ? "Film" : "Serie"}{item.year ? ` · ${item.year}` : ""} · {actionText[item.action]}
+                  {metadataLabel(item.genres, 2) ? ` · ${metadataLabel(item.genres, 2)}` : ""}
                 </p>
                 {item.errorMessage && <p className="mt-1 line-clamp-2 text-xs text-amber-200">{item.errorMessage}</p>}
                 <div className="mt-2 flex flex-wrap gap-2">

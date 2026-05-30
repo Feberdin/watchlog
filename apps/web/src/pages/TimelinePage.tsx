@@ -10,8 +10,17 @@ import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock
 import type { TimelineGroup, TimelineItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
 
 type SortMode = "latest" | "title" | "type";
+
+type TimelineSeasonGroup = {
+  seasonNumber: number | null;
+  episodes: TimelineItem[];
+  watchedEpisodes: number;
+  watchtimeSeconds: number;
+  lastWatchedAt: string | null;
+};
 
 type PeriodStats = {
   total: number;
@@ -105,6 +114,17 @@ function episodeLabel(item: TimelineItem) {
   return [season, episode].filter(Boolean).join(" ");
 }
 
+function mergeUnique(left: string[], right: string[]) {
+  const byName = new Map<string, string>();
+  for (const value of [...left, ...right]) {
+    const normalized = value.trim();
+    if (!normalized) continue;
+    byName.set(normalized.toLocaleLowerCase("de-DE"), normalized);
+  }
+
+  return [...byName.values()];
+}
+
 function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
   const groups: TimelineGroup[] = [];
   const seriesMap = new Map<string, Extract<TimelineGroup, { kind: "series" }>>();
@@ -117,6 +137,9 @@ function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
       if (existing) {
         existing.episodes.push(item);
         existing.watchedEpisodes += 1;
+        existing.watchtimeSeconds += item.runtimeSeconds ?? 0;
+        existing.genres = mergeUnique(existing.genres, item.genres);
+        existing.cast = mergeUnique(existing.cast, item.cast);
         if (!existing.lastWatchedAt || (item.watchedAt && item.watchedAt > existing.lastWatchedAt)) {
           existing.lastWatchedAt = item.watchedAt;
         }
@@ -129,6 +152,9 @@ function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
           seriesId: fallbackSeriesId,
           seriesTitle,
           posterUrl: item.seriesPosterUrl ?? item.posterUrl,
+          genres: item.genres,
+          cast: item.cast,
+          watchtimeSeconds: item.runtimeSeconds ?? 0,
           watchedEpisodes: 1,
           totalEpisodes: null,
           isComplete: null,
@@ -155,6 +181,33 @@ function groupTimelineItems(items: TimelineItem[]): TimelineGroup[] {
   }
 
   return groups;
+}
+
+function groupSeriesEpisodesBySeason(episodes: TimelineItem[]): TimelineSeasonGroup[] {
+  const seasons = new Map<string, TimelineSeasonGroup>();
+  for (const episode of episodes) {
+    const key = episode.seasonNumber === null ? "unknown" : String(episode.seasonNumber);
+    const current = seasons.get(key) ?? {
+      seasonNumber: episode.seasonNumber,
+      episodes: [],
+      watchedEpisodes: 0,
+      watchtimeSeconds: 0,
+      lastWatchedAt: null,
+    };
+    current.episodes.push(episode);
+    current.watchedEpisodes += 1;
+    current.watchtimeSeconds += episode.runtimeSeconds ?? 0;
+    if (!current.lastWatchedAt || (episode.watchedAt && episode.watchedAt > current.lastWatchedAt)) {
+      current.lastWatchedAt = episode.watchedAt;
+    }
+    seasons.set(key, current);
+  }
+
+  return [...seasons.values()].sort((left, right) => (left.seasonNumber ?? 9999) - (right.seasonNumber ?? 9999));
+}
+
+function seasonLabel(seasonNumber: number | null) {
+  return seasonNumber === null ? "Staffel unbekannt" : `Staffel ${seasonNumber}`;
 }
 
 function groupTitle(group: TimelineGroup) {
@@ -266,7 +319,7 @@ function TimelineStatsPanel({ stats }: { stats: TimelineStats | null }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Gesamte Watchtime</h2>
-            <p className="mt-1 text-sm text-slate-400">Alle jemals gespeicherten Filme und Serien zusammen. Wochentage, Trends und Fun Facts nutzen nur Jellyfin-Events.</p>
+            <p className="mt-1 text-sm text-slate-400">Alle gespeicherten Filme, Serien und Episoden mit hinterlegter Laufzeit.</p>
           </div>
           <p className="text-3xl font-semibold text-teal-200">{formatDuration(stats.totals.watchtimeSeconds)}</p>
         </div>
@@ -350,6 +403,7 @@ export function TimelinePage() {
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("latest");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedSeasons, setExpandedSeasons] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -365,7 +419,7 @@ export function TimelinePage() {
     const normalized = query.trim().toLowerCase();
     const filtered = normalized
       ? items.filter((item) => {
-        const searchable = [item.title, item.seriesTitle, item.year?.toString()].filter(Boolean).join(" ").toLowerCase();
+        const searchable = [item.title, item.seriesTitle, item.year?.toString(), ...item.genres, ...item.cast].filter(Boolean).join(" ").toLowerCase();
         return searchable.includes(normalized);
       })
       : items;
@@ -418,14 +472,17 @@ export function TimelinePage() {
                   className="h-24 w-16"
                   typeLabel={mediaTypeLabel(item.type)}
                   year={item.year}
-                  meta={[`Quelle: ${item.source}`, `Rewatch #${item.rewatchIndex}`, formatWatchDate(item.watchedAt, item.datePrecision)]}
+                  meta={[genreLabel(item.genres), castLabel(item.cast), `Quelle: ${item.source}`, `Rewatch #${item.rewatchIndex}`, formatWatchDate(item.watchedAt, item.datePrecision)]}
+                  cast={item.cast}
                   overview={item.note}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-medium">{item.title} {item.year ? <span className="text-slate-400">({item.year})</span> : null}</p>
-                      <p className="mt-1 text-sm text-slate-400">{mediaTypeLabel(item.type)} · Quelle: {item.source} · Rewatch #{item.rewatchIndex}</p>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {[mediaTypeLabel(item.type), metadataLabel(item.genres), `Quelle: ${item.source}`, `Rewatch #${item.rewatchIndex}`].filter(Boolean).join(" · ")}
+                      </p>
                     </div>
                     <time className="text-sm text-slate-300">{formatWatchDate(item.watchedAt, item.datePrecision)}</time>
                   </div>
@@ -436,6 +493,7 @@ export function TimelinePage() {
           }
 
           const open = expanded[group.seriesId] ?? false;
+          const seasons = groupSeriesEpisodesBySeason(group.episodes);
           return (
             <article key={group.seriesId} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
               <button
@@ -450,10 +508,14 @@ export function TimelinePage() {
                   className="h-24 w-16"
                   typeLabel="Serie"
                   meta={[
+                    genreLabel(group.genres),
+                    castLabel(group.cast),
                     `${group.watchedEpisodes} Episode${group.watchedEpisodes === 1 ? "" : "n"} gesehen`,
                     group.totalEpisodes ? `${group.totalEpisodes} Episoden gesamt` : null,
+                    group.watchtimeSeconds > 0 ? formatDuration(group.watchtimeSeconds) : null,
                     formatWatchDate(group.lastWatchedAt, "unknown"),
                   ]}
+                  cast={group.cast}
                   focusable={false}
                 />
                 <div className="min-w-0 flex-1">
@@ -467,6 +529,8 @@ export function TimelinePage() {
                       <p className="mt-1 text-sm text-slate-400">
                         Serie · {group.watchedEpisodes} Episode{group.watchedEpisodes === 1 ? "" : "n"} gesehen
                         {group.totalEpisodes ? ` von ${group.totalEpisodes}` : ""}
+                        {group.genres.length > 0 ? ` · ${metadataLabel(group.genres)}` : ""}
+                        {group.watchtimeSeconds > 0 ? ` · ${formatDuration(group.watchtimeSeconds)}` : ""}
                       </p>
                     </div>
                     <time className="text-sm text-slate-300">{formatWatchDate(group.lastWatchedAt, "unknown")}</time>
@@ -475,15 +539,44 @@ export function TimelinePage() {
               </button>
               {open && (
                 <div className="border-t border-slate-800 bg-slate-950/60">
-                  {group.episodes.map((episode) => (
-                    <div key={episode.id} className="grid gap-2 border-b border-slate-800 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_auto]">
-                      <div>
-                        <p className="font-medium">{episodeLabel(episode)} {episode.title}</p>
-                        <p className="text-sm text-slate-400">Quelle: {episode.source} · Rewatch #{episode.rewatchIndex}</p>
-                      </div>
-                      <time className="text-sm text-slate-300">{formatWatchDate(episode.watchedAt, episode.datePrecision)}</time>
-                    </div>
-                  ))}
+                  {seasons.map((season) => {
+                    const seasonKey = `${group.seriesId}:${season.seasonNumber ?? "unknown"}`;
+                    const seasonOpen = expandedSeasons[seasonKey] ?? false;
+                    return (
+                      <section key={seasonKey} className="border-b border-slate-800 last:border-b-0">
+                        <button
+                          type="button"
+                          className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-900"
+                          onClick={() => setExpandedSeasons((current) => ({ ...current, [seasonKey]: !seasonOpen }))}
+                        >
+                          <span className="flex items-center gap-2 font-medium">
+                            {seasonOpen ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+                            {seasonLabel(season.seasonNumber)}
+                          </span>
+                          <span className="text-sm text-slate-400">
+                            {season.watchedEpisodes} Episode{season.watchedEpisodes === 1 ? "" : "n"}
+                            {season.watchtimeSeconds > 0 ? ` · ${formatDuration(season.watchtimeSeconds)}` : ""}
+                            {" · "}{formatWatchDate(season.lastWatchedAt, "unknown")}
+                          </span>
+                        </button>
+                        {seasonOpen && (
+                          <div className="divide-y divide-slate-800">
+                            {season.episodes.map((episode) => (
+                              <div key={episode.id} className="grid gap-2 px-6 py-3 sm:grid-cols-[1fr_auto]">
+                                <div>
+                                  <p className="font-medium">{episodeLabel(episode)} {episode.title}</p>
+                                  <p className="text-sm text-slate-400">
+                                    {[metadataLabel(episode.genres), `Quelle: ${episode.source}`, `Rewatch #${episode.rewatchIndex}`].filter(Boolean).join(" · ")}
+                                  </p>
+                                </div>
+                                <time className="text-sm text-slate-300">{formatWatchDate(episode.watchedAt, episode.datePrecision)}</time>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
                 </div>
               )}
             </article>

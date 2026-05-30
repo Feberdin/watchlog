@@ -32,6 +32,9 @@ export type TimelineItem = {
   title: string;
   type: MediaType;
   year: number | null;
+  genres: string[];
+  cast: string[];
+  runtimeSeconds: number | null;
   posterUrl: string | null;
   watchedAt: string | null;
   datePrecision: DatePrecision;
@@ -56,6 +59,9 @@ export type TimelineSeriesGroup = {
   seriesId: string;
   seriesTitle: string;
   posterUrl: string | null;
+  genres: string[];
+  cast: string[];
+  watchtimeSeconds: number;
   watchedEpisodes: number;
   totalEpisodes: number | null;
   isComplete: boolean | null;
@@ -78,6 +84,8 @@ export type TmdbSearchResult = {
   title: string;
   originalTitle: string | null;
   year: number | null;
+  genres: string[];
+  cast: string[];
   overview: string | null;
   posterPath: string | null;
   backdropPath: string | null;
@@ -101,6 +109,8 @@ export type SeriesEpisode = {
   id: string;
   title: string;
   year: number | null;
+  genres: string[];
+  cast: string[];
   seasonNumber: number | null;
   episodeNumber: number | null;
   watched: boolean;
@@ -111,6 +121,8 @@ export type SeriesEpisode = {
 export type SeriesSeason = {
   seasonNumber: number | null;
   startYear: number | null;
+  genres: string[];
+  cast: string[];
   episodes: SeriesEpisode[];
   watchedEpisodes: number;
   totalEpisodes: number;
@@ -121,6 +133,8 @@ export type SeriesCatalogItem = {
   id: string;
   title: string;
   startYear: number | null;
+  genres: string[];
+  cast: string[];
   posterUrl: string | null;
   watchedEpisodes: number;
   totalEpisodes: number;
@@ -133,6 +147,8 @@ export type SwipeCandidate = {
   type: "movie" | "show";
   title: string;
   year: number | null;
+  genres: string[];
+  cast: string[];
   overview: string | null;
   runtimeSeconds: number | null;
   posterUrl: string | null;
@@ -165,6 +181,8 @@ export type SwipeHistoryItem = {
   title: string;
   type: "movie" | "show";
   year: number | null;
+  genres: string[];
+  cast: string[];
   posterUrl: string | null;
   tmdbId: string | null;
 };
@@ -173,10 +191,25 @@ export type CinemaMemoryCandidate = {
   id: string;
   title: string;
   year: number | null;
+  genres: string[];
+  cast: string[];
   overview: string | null;
   posterUrl: string | null;
   tmdbId: string | null;
   status: "open" | "seen" | "want" | "skip";
   voteAverage: number | null;
   voteCount: number | null;
+};
+
+export type TmdbJellyseerrBulkRequestResult = {
+  requested: number;
+  alreadyRequested: number;
+  failed: number;
+  results: Array<{
+    type: "movie" | "show";
+    tmdbId: number;
+    title: string | null;
+    status: "requested" | "already_requested" | "failed";
+    message: string;
+  }>;
 };

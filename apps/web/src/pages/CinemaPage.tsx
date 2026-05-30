@@ -10,6 +10,7 @@ import { Check, Download, Search, X } from "lucide-react";
 import type { CinemaMemoryCandidate, SwipeActionResult } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
+import { castLabel, genreLabel, genreOptions, metadataLabel } from "../utils/mediaMetadata";
 
 type Action = "seen" | "want" | "skip";
 
@@ -29,6 +30,7 @@ export function CinemaPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [genreFilter, setGenreFilter] = useState("all");
 
   const summary = useMemo(() => ({
     remaining: items.length,
@@ -36,6 +38,11 @@ export function CinemaPage() {
     want: archivedItems.filter((item) => item.status === "want").length,
     skip: archivedItems.filter((item) => item.status === "skip").length,
   }), [items, archivedItems]);
+  const availableGenres = useMemo(() => genreOptions(items), [items]);
+  const filteredItems = useMemo(
+    () => genreFilter === "all" ? items : items.filter((item) => item.genres.includes(genreFilter)),
+    [genreFilter, items],
+  );
 
   async function loadCandidates() {
     setLoading(true);
@@ -50,6 +57,7 @@ export function CinemaPage() {
       const loaded = await apiRequest<CinemaMemoryCandidate[]>(`/api/cinema/candidates?${params.toString()}`);
       setItems(loaded);
       setArchivedItems([]);
+      setGenreFilter("all");
       setStatus(`${loaded.length} offene Kino-Kandidaten geladen. Bereits einsortierte Filme werden ausgeblendet.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Kino-Liste konnte nicht geladen werden.");
@@ -109,8 +117,15 @@ export function CinemaPage() {
       </section>
 
       {items.length > 0 && (
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-5">
           <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.remaining}</span> offen</p>
+          <label className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm sm:col-span-2">
+            Genre filtern
+            <select className="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2" value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
+              <option value="all">Alle Genres</option>
+              {availableGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+            </select>
+          </label>
           <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.seen}</span> gerade gesehen</p>
           <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.want}</span> gerade gewünscht</p>
           <p className="rounded-md border border-slate-800 bg-slate-900 p-3 text-sm"><span className="block text-2xl font-semibold">{summary.skip}</span> gerade archiviert</p>
@@ -134,7 +149,7 @@ export function CinemaPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {items.map((item) => (
+                {filteredItems.map((item) => (
                   <tr key={item.id} className="align-top">
                     <td className="px-4 py-3">
                       <PosterPreview
@@ -144,14 +159,17 @@ export function CinemaPage() {
                         className="h-20 w-14"
                         typeLabel="Film"
                         year={item.year}
-                        meta={[item.tmdbId ? `TMDb ${item.tmdbId}` : null, item.voteAverage ? `${item.voteAverage.toFixed(1)}/10` : null, actionLabel(item.status)]}
+                        meta={[genreLabel(item.genres), castLabel(item.cast), item.tmdbId ? `TMDb ${item.tmdbId}` : null, item.voteAverage ? `${item.voteAverage.toFixed(1)}/10` : null, actionLabel(item.status)]}
+                        cast={item.cast}
                         overview={item.overview}
                         imageClassName="rounded"
                       />
                     </td>
                     <td className="px-4 py-3">
                       <h2 className="font-medium">{item.title}</h2>
-                      <p className="mt-1 text-slate-400">{item.year ?? "ohne Jahr"} · TMDb {item.tmdbId ?? "-"}{item.voteAverage ? ` · ${item.voteAverage.toFixed(1)}/10` : ""}</p>
+                      <p className="mt-1 text-slate-400">
+                        {[item.year ?? "ohne Jahr", metadataLabel(item.genres), `TMDb ${item.tmdbId ?? "-"}`, item.voteAverage ? `${item.voteAverage.toFixed(1)}/10` : null].filter(Boolean).join(" · ")}
+                      </p>
                       <p className="mt-2 line-clamp-2 max-w-3xl text-slate-300">{item.overview ?? "Keine Beschreibung vorhanden."}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-300">{actionLabel(item.status)}</td>
@@ -172,7 +190,12 @@ export function CinemaPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  ))}
+                {filteredItems.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-slate-400" colSpan={4}>Kein offener Film passt zum gewählten Genre.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -193,13 +216,14 @@ export function CinemaPage() {
                   className="h-20 w-14"
                   typeLabel="Film"
                   year={item.year}
-                  meta={[actionLabel(item.status), item.tmdbId ? `TMDb ${item.tmdbId}` : null]}
+                  meta={[genreLabel(item.genres), actionLabel(item.status), item.tmdbId ? `TMDb ${item.tmdbId}` : null]}
+                  cast={item.cast}
                   overview={item.overview}
                   imageClassName="rounded"
                 />
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate font-medium">{item.title}</h3>
-                  <p className="text-sm text-slate-400">{item.year ?? "ohne Jahr"} · {actionLabel(item.status)}</p>
+                  <p className="text-sm text-slate-400">{[item.year ?? "ohne Jahr", metadataLabel(item.genres), actionLabel(item.status)].filter(Boolean).join(" · ")}</p>
                 </div>
               </article>
             ))}

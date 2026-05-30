@@ -40,6 +40,8 @@ function toCandidate(media: Media, recommendation?: TmdbRecommendation): SwipeCa
     type: media.type as "movie" | "show",
     title: media.title,
     year: media.year,
+    genres: media.genres,
+    cast: media.cast,
     overview: media.overview,
     runtimeSeconds: media.runtimeSeconds,
     posterUrl: media.posterUrl,
@@ -70,6 +72,8 @@ async function upsertRecommendation(prisma: PrismaClient, recommendation: TmdbRe
     originalTitle: recommendation.originalTitle,
     year: recommendation.year,
     overview: recommendation.overview,
+    genres: recommendation.genres,
+    cast: recommendation.cast,
     tmdbId: String(recommendation.tmdbId),
     posterPath: recommendation.posterPath,
     backdropPath: recommendation.backdropPath,
@@ -184,6 +188,8 @@ export async function listSwipeHistory(prisma: PrismaClient, userId: string): Pr
       title: decision.media.title,
       type: decision.media.type as "movie" | "show",
       year: decision.media.year,
+      genres: decision.media.genres,
+      cast: decision.media.cast,
       posterUrl: decision.media.posterUrl,
       tmdbId: decision.media.tmdbId,
     }));
@@ -229,7 +235,10 @@ async function markSeen(prisma: PrismaClient, user: User, media: Media): Promise
   };
 }
 
-async function requestWantToWatch(prisma: PrismaClient, media: Media): Promise<Pick<SwipeActionResult, "jellyfinSynced" | "jellyseerrRequested" | "message">> {
+export async function requestMediaInJellyseerr(
+  prisma: PrismaClient,
+  media: Media,
+): Promise<Pick<SwipeActionResult, "jellyfinSynced" | "jellyseerrRequested" | "message"> & { alreadyRequested: boolean }> {
   if (!media.tmdbId || !/^\d+$/.test(media.tmdbId)) {
     throw new Error("Jellyseerr braucht eine TMDb-ID. Bitte das Medium zuerst mit TMDb-Metadaten verknuepfen.");
   }
@@ -249,6 +258,7 @@ async function requestWantToWatch(prisma: PrismaClient, media: Media): Promise<P
   return {
     jellyfinSynced: false,
     jellyseerrRequested: true,
+    alreadyRequested: result.alreadyRequested,
     message: result.alreadyRequested
       ? "War in Jellyseerr bereits angefragt. Swipe wurde gespeichert."
       : "In Jellyseerr angefragt. Der Download laeuft ueber deine Jellyseerr/Radarr/Sonarr-Regeln.",
@@ -276,7 +286,7 @@ export async function applySwipeAction(
     if (action === "seen") {
       result = await markSeen(prisma, user, media);
     } else if (action === "want") {
-      result = await requestWantToWatch(prisma, media);
+      result = await requestMediaInJellyseerr(prisma, media);
     } else {
       result = {
         jellyfinSynced: false,

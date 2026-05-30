@@ -22,12 +22,19 @@ type TmdbSearchResponse<T> = {
   results?: T[];
 };
 
+type TmdbGenre = {
+  id?: number;
+  name?: string;
+};
+
 type TmdbMovieResult = {
   id: number;
   title?: string;
   original_title?: string;
   overview?: string;
   release_date?: string;
+  genre_ids?: number[];
+  genres?: TmdbGenre[];
   poster_path?: string | null;
   backdrop_path?: string | null;
   vote_average?: number;
@@ -40,6 +47,8 @@ type TmdbShowResult = {
   original_name?: string;
   overview?: string;
   first_air_date?: string;
+  genre_ids?: number[];
+  genres?: TmdbGenre[];
   poster_path?: string | null;
   backdrop_path?: string | null;
   vote_average?: number;
@@ -60,9 +69,21 @@ type TmdbVideosResponse = {
   results?: TmdbVideoResult[];
 };
 
+type TmdbCastMember = {
+  name?: string;
+  original_name?: string;
+  order?: number;
+  popularity?: number;
+};
+
+type TmdbCreditsResponse = {
+  cast?: TmdbCastMember[];
+};
+
 type TmdbMovieDetail = TmdbMovieResult & {
   runtime?: number | null;
   imdb_id?: string | null;
+  credits?: TmdbCreditsResponse;
 };
 
 type TmdbShowDetail = TmdbShowResult & {
@@ -79,6 +100,7 @@ type TmdbShowDetail = TmdbShowResult & {
     imdb_id?: string | null;
     tvdb_id?: number | null;
   };
+  credits?: TmdbCreditsResponse;
 };
 
 type TmdbSeasonDetail = {
@@ -133,6 +155,8 @@ export type TmdbTvCatalog = {
   title: string;
   originalTitle: string | null;
   startYear: number | null;
+  genres: string[];
+  cast: string[];
   overview: string | null;
   posterUrl: string | null;
   backdropUrl: string | null;
@@ -186,6 +210,86 @@ function runtimeMinutesToSeconds(value: number | null | undefined): number | nul
   return Math.round(value * 60);
 }
 
+const TMDB_MOVIE_GENRES: Record<number, string> = {
+  12: "Abenteuer",
+  14: "Fantasy",
+  16: "Animation",
+  18: "Drama",
+  27: "Horror",
+  28: "Action",
+  35: "Komödie",
+  36: "Historie",
+  37: "Western",
+  53: "Thriller",
+  80: "Krimi",
+  99: "Dokumentarfilm",
+  878: "Science Fiction",
+  9648: "Mystery",
+  10402: "Musik",
+  10749: "Liebesfilm",
+  10751: "Familie",
+  10752: "Kriegsfilm",
+  10770: "TV-Film",
+};
+
+const TMDB_SHOW_GENRES: Record<number, string> = {
+  16: "Animation",
+  18: "Drama",
+  35: "Komödie",
+  37: "Western",
+  80: "Krimi",
+  99: "Dokumentarfilm",
+  9648: "Mystery",
+  10751: "Familie",
+  10759: "Action & Adventure",
+  10762: "Kids",
+  10763: "Nachrichten",
+  10764: "Reality",
+  10765: "Sci-Fi & Fantasy",
+  10766: "Soap",
+  10767: "Talk",
+  10768: "War & Politics",
+};
+
+function normalizeGenres(genres: Array<string | null | undefined>): string[] {
+  const unique = new Map<string, string>();
+  for (const value of genres) {
+    const name = value?.trim();
+    if (!name) continue;
+    unique.set(name.toLocaleLowerCase("de-DE"), name);
+  }
+
+  return [...unique.values()];
+}
+
+function genresFromTmdb(type: "movie" | "show", detailGenres?: TmdbGenre[], genreIds?: number[]): string[] {
+  const detailNames = normalizeGenres((detailGenres ?? []).map((genre) => genre.name));
+  if (detailNames.length > 0) {
+    return detailNames;
+  }
+
+  const map = type === "movie" ? TMDB_MOVIE_GENRES : TMDB_SHOW_GENRES;
+  return normalizeGenres((genreIds ?? []).map((genreId) => map[genreId] ?? null));
+}
+
+function castFromCredits(cast: TmdbCastMember[] | undefined): string[] {
+  const unique = new Map<string, string>();
+  const sorted = [...(cast ?? [])].sort((left, right) => {
+    const orderDelta = (left.order ?? 9999) - (right.order ?? 9999);
+    if (orderDelta !== 0) return orderDelta;
+    return (right.popularity ?? 0) - (left.popularity ?? 0);
+  });
+
+  for (const member of sorted) {
+    const name = (member.name ?? member.original_name)?.trim();
+    if (!name) continue;
+    unique.set(name.toLocaleLowerCase("de-DE"), name);
+    if (unique.size >= 10) break;
+  }
+
+  return [...unique.values()];
+}
+
 export function buildTmdbImageUrl(imageBaseUrl: string, filePath: string | null | undefined, size = "w342"): string | null {
   if (!filePath) {
     return null;
@@ -203,6 +307,8 @@ function movieToSearchResult(movie: TmdbMovieResult, imageBaseUrl: string): Tmdb
     title: movie.title ?? movie.original_title ?? `TMDb ${movie.id}`,
     originalTitle: movie.original_title ?? null,
     year: yearFromDate(movie.release_date),
+    genres: genresFromTmdb("movie", movie.genres, movie.genre_ids),
+    cast: castFromCredits((movie as TmdbMovieDetail).credits?.cast),
     overview: movie.overview ?? null,
     posterPath: movie.poster_path ?? null,
     backdropPath: movie.backdrop_path ?? null,
@@ -218,6 +324,8 @@ function showToSearchResult(show: TmdbShowResult, imageBaseUrl: string): TmdbSea
     title: show.name ?? show.original_name ?? `TMDb ${show.id}`,
     originalTitle: show.original_name ?? null,
     year: yearFromDate(show.first_air_date),
+    genres: genresFromTmdb("show", show.genres, show.genre_ids),
+    cast: castFromCredits((show as TmdbShowDetail).credits?.cast),
     overview: show.overview ?? null,
     posterPath: show.poster_path ?? null,
     backdropPath: show.backdrop_path ?? null,
@@ -245,7 +353,37 @@ export async function testTmdbConnection(settings: TmdbSettingsForClient): Promi
   };
 }
 
-export async function searchTmdb(settings: TmdbSettingsForClient, query: string, type: "movie" | "show", year?: number | null) {
+async function enrichSearchResultWithCredits(settings: TmdbSettingsForClient, result: TmdbSearchResult): Promise<TmdbSearchResult> {
+  const path = result.type === "movie" ? `/movie/${result.tmdbId}` : `/tv/${result.tmdbId}`;
+  const detail = await tmdbGet<TmdbMovieDetail | TmdbShowDetail>(path, settings, {
+    language: settings.preferredLanguage,
+    append_to_response: "credits",
+  }).catch(() => null);
+  if (!detail) {
+    return result;
+  }
+
+  const genres = genresFromTmdb(result.type, detail.genres, detail.genre_ids);
+  return {
+    ...result,
+    genres: genres.length > 0 ? genres : result.genres,
+    cast: castFromCredits(detail.credits?.cast),
+  };
+}
+
+async function getTmdbCast(settings: TmdbSettingsForClient, type: "movie" | "show", tmdbId: number): Promise<string[]> {
+  const path = type === "movie" ? `/movie/${tmdbId}/credits` : `/tv/${tmdbId}/credits`;
+  const response = await tmdbGet<TmdbCreditsResponse>(path, settings, { language: settings.preferredLanguage }).catch(() => null);
+  return castFromCredits(response?.cast);
+}
+
+export async function searchTmdb(
+  settings: TmdbSettingsForClient,
+  query: string,
+  type: "movie" | "show",
+  year?: number | null,
+  options: { includeCast?: boolean } = {},
+) {
   const path = type === "movie" ? "/search/movie" : "/search/tv";
   const yearKey = type === "movie" ? "year" : "first_air_date_year";
   const response = await tmdbGet<TmdbSearchResponse<TmdbMovieResult | TmdbShowResult>>(path, settings, {
@@ -255,11 +393,17 @@ export async function searchTmdb(settings: TmdbSettingsForClient, query: string,
     [yearKey]: year ?? undefined,
   });
 
-  return (response.results ?? []).slice(0, 10).map((result) => (
+  const results = (response.results ?? []).slice(0, 10).map((result) => (
     type === "movie"
       ? movieToSearchResult(result as TmdbMovieResult, settings.imageBaseUrl)
       : showToSearchResult(result as TmdbShowResult, settings.imageBaseUrl)
   ));
+
+  if (!options.includeCast) {
+    return results;
+  }
+
+  return Promise.all(results.map((result) => enrichSearchResultWithCredits(settings, result)));
 }
 
 function recommendationFromResult(
@@ -438,11 +582,19 @@ export async function getTmdbSwipeRecommendations(settings: TmdbSettingsForClien
     ...classics.slice(0, 10),
     ...random.slice(0, 10),
   ];
-  return Promise.all(recommendations.map(async (recommendation) => ({
-    ...recommendation,
-    ...(await getTmdbTrailer(settings, recommendation.type, recommendation.tmdbId)
-      .then((trailer) => ({ trailerUrl: trailer?.url ?? null, trailerSite: trailer?.site ?? null }))),
-  })));
+  return Promise.all(recommendations.map(async (recommendation) => {
+    const [trailer, cast] = await Promise.all([
+      getTmdbTrailer(settings, recommendation.type, recommendation.tmdbId),
+      getTmdbCast(settings, recommendation.type, recommendation.tmdbId),
+    ]);
+
+    return {
+      ...recommendation,
+      cast,
+      trailerUrl: trailer?.url ?? null,
+      trailerSite: trailer?.site ?? null,
+    };
+  }));
 }
 
 export async function getTmdbCinemaMemoryMovies(
@@ -532,7 +684,10 @@ export async function getTmdbTvMemoryShows(
 
 export async function getTmdbDetails(settings: TmdbSettingsForClient, type: "movie" | "show", tmdbId: number): Promise<TmdbSearchResult & { runtimeSeconds: number | null; imdbId: string | null }> {
   if (type === "movie") {
-    const detail = await tmdbGet<TmdbMovieDetail>(`/movie/${tmdbId}`, settings, { language: settings.preferredLanguage });
+    const detail = await tmdbGet<TmdbMovieDetail>(`/movie/${tmdbId}`, settings, {
+      language: settings.preferredLanguage,
+      append_to_response: "credits",
+    });
     const result = movieToSearchResult(detail, settings.imageBaseUrl);
     return {
       ...result,
@@ -541,7 +696,10 @@ export async function getTmdbDetails(settings: TmdbSettingsForClient, type: "mov
     };
   }
 
-  const detail = await tmdbGet<TmdbShowDetail>(`/tv/${tmdbId}`, settings, { language: settings.preferredLanguage });
+  const detail = await tmdbGet<TmdbShowDetail>(`/tv/${tmdbId}`, settings, {
+    language: settings.preferredLanguage,
+    append_to_response: "credits",
+  });
   const result = showToSearchResult(detail, settings.imageBaseUrl);
   return {
     ...result,
@@ -587,7 +745,7 @@ function episodeFromTmdb(episode: NonNullable<TmdbSeasonDetail["episodes"]>[numb
 export async function getTmdbTvCatalog(settings: TmdbSettingsForClient, tmdbId: number): Promise<TmdbTvCatalog> {
   const detail = await tmdbGet<TmdbShowDetail>(`/tv/${tmdbId}`, settings, {
     language: settings.preferredLanguage,
-    append_to_response: "external_ids",
+    append_to_response: "external_ids,credits",
   });
   const result = showToSearchResult(detail, settings.imageBaseUrl);
 
@@ -596,6 +754,8 @@ export async function getTmdbTvCatalog(settings: TmdbSettingsForClient, tmdbId: 
     title: result.title,
     originalTitle: result.originalTitle,
     startYear: result.year,
+    genres: result.genres,
+    cast: result.cast,
     overview: result.overview,
     posterUrl: result.posterUrl,
     backdropUrl: result.backdropUrl,

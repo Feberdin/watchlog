@@ -221,6 +221,9 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       title: row.media.title,
       type: row.media.type,
       year: row.media.year,
+      genres: row.media.genres.length > 0 ? row.media.genres : row.media.parent?.genres ?? [],
+      cast: row.media.cast.length > 0 ? row.media.cast : row.media.parent?.cast ?? [],
+      runtimeSeconds: row.durationSeconds ?? row.media.runtimeSeconds,
       posterUrl: row.media.posterUrl,
       watchedAt: row.watchedAt?.toISOString() ?? null,
       datePrecision: row.datePrecision,
@@ -237,7 +240,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/watch-events/stats", async (request) => {
     const user = request.requireUser();
-    const rows = await app.prisma.watchEvent.findMany({
+    const datedRows = await app.prisma.watchEvent.findMany({
       where: {
         userId: user.id,
         watchedAt: { not: null },
@@ -247,9 +250,20 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
       take: 5000,
     });
+    const totalRows = await app.prisma.watchEvent.findMany({
+      where: {
+        userId: user.id,
+        media: { metadataSource: { not: "swipe-tmdb" } },
+      },
+      include: { media: { include: { parent: true } } },
+      orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
+      take: 5000,
+    });
 
-    const typedRows = rows as WatchEventStatsRow[];
+    const typedRows = totalRows as WatchEventStatsRow[];
+    const datedTypedRows = datedRows as WatchEventStatsRow[];
     const jellyfinRows = typedRows.filter((row) => row.source === "jellyfin");
+    const datedJellyfinRows = datedTypedRows.filter((row) => row.source === "jellyfin");
     const titles = new Map<string, { id: string; title: string; type: string; count: number; watchtimeSeconds: number }>();
 
     for (const row of jellyfinRows) {
@@ -281,10 +295,10 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       }, null)
       : null;
     const topTitle = topEntry(Array.from(titles.values()), "count");
-    const movieWeekdays = buildWeekdayBuckets(jellyfinRows, "movie");
-    const seriesWeekdays = buildWeekdayBuckets(jellyfinRows, "series");
-    const movieMonthlyTrend = buildMonthlyTrendFor(jellyfinRows, "movie");
-    const seriesMonthlyTrend = buildMonthlyTrendFor(jellyfinRows, "series");
+    const movieWeekdays = buildWeekdayBuckets(datedJellyfinRows, "movie");
+    const seriesWeekdays = buildWeekdayBuckets(datedJellyfinRows, "series");
+    const movieMonthlyTrend = buildMonthlyTrendFor(datedJellyfinRows, "movie");
+    const seriesMonthlyTrend = buildMonthlyTrendFor(datedJellyfinRows, "series");
     const combinedWeekdays = movieWeekdays.map((bucket, index) => {
       const seriesBucket = seriesWeekdays[index] ?? { count: 0, watchtimeSeconds: 0, items: [] as StatsDetail[] };
       return {
@@ -295,15 +309,15 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       };
     });
     const topWeekday = topEntry([...movieWeekdays, ...seriesWeekdays], "watchtimeSeconds");
-    const monthlyTrend = buildMonthlyTrend(jellyfinRows).map(finalizeBucket);
+    const monthlyTrend = buildMonthlyTrend(datedJellyfinRows).map(finalizeBucket);
     const topMonth = topEntry(monthlyTrend, "count");
 
     return {
-      sourceNote: "Statistiken fuer Wochentage, Trends und Fun Facts beruecksichtigen nur Jellyfin-WatchEvents. Manuelle Massenmarkierungen werden dort bewusst ignoriert.",
+      sourceNote: "Gesamte Watchtime summiert alle gespeicherten Filme, Serien und Episoden mit Laufzeit. Wochentage, Trends und Fun Facts beruecksichtigen nur datierbare Jellyfin-WatchEvents.",
       periods: {
-        week: summarizePeriod(jellyfinRows, periodStart(7)),
-        month: summarizePeriod(jellyfinRows, monthStart()),
-        year: summarizePeriod(jellyfinRows, yearStart()),
+        week: summarizePeriod(datedJellyfinRows, periodStart(7)),
+        month: summarizePeriod(datedJellyfinRows, monthStart()),
+        year: summarizePeriod(datedJellyfinRows, yearStart()),
       },
       totals: {
         events: typedRows.length,

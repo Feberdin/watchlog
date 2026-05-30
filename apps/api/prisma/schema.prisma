@@ -82,6 +82,8 @@ model Media {
   sortTitle            String?
   year                 Int?
   overview             String?
+  genres               String[]         @default([])
+  cast                 String[]         @default([])
   runtimeSeconds       Int?
   tmdbId               String?
   imdbId               String?
