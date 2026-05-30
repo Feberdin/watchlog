@@ -3,7 +3,7 @@
 # Invariants: Secrets are provided at runtime through env vars, never baked into the image.
 # Debugging: Use `docker build --progress=plain .` for detailed build logs.
 
-FROM node:20-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates fontconfig fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
