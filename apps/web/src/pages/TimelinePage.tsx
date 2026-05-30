@@ -5,8 +5,8 @@
  * Debugging: If a series is not grouped, inspect the API fields `seriesId`, `seriesTitle`, and `seasonNumber`.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Search, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Search, Sparkles, X } from "lucide-react";
 import type { TimelineGroup, TimelineItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
@@ -44,6 +44,27 @@ type StatsBucket = {
   items: StatsDetail[];
 };
 
+type RuntimeEstimateItem = {
+  mediaId: string;
+  title: string;
+  type: string;
+  year: number | null;
+  seriesTitle: string | null;
+  estimatedRuntimeSeconds: number;
+  watchEvents: number;
+};
+
+type RuntimeStats = {
+  knownEvents: number;
+  estimatedEvents: number;
+  estimatedSeconds: number;
+  estimatedMovies: number;
+  estimatedSeries: number;
+  estimatedEpisodes: number;
+  estimatedSeasons: number;
+  estimatedItems: RuntimeEstimateItem[];
+};
+
 type TimelineStats = {
   sourceNote: string;
   periods: {
@@ -58,6 +79,7 @@ type TimelineStats = {
     jellyfinWatchtimeSeconds: number;
     rewatches: number;
     firstWatchedAt: string | null;
+    runtime: RuntimeStats;
   };
   weekdays: StatsBucket[];
   monthlyTrend: StatsBucket[];
@@ -225,6 +247,14 @@ function mediaTypeLabel(type: TimelineItem["type"]) {
   return "Episode";
 }
 
+function runtimeMediaLabel(type: string) {
+  if (type === "movie") return "Film";
+  if (type === "show") return "Serie";
+  if (type === "season") return "Staffel";
+  if (type === "episode") return "Episode";
+  return "Medium";
+}
+
 function sortGroups(groups: TimelineGroup[], sortMode: SortMode) {
   return [...groups].sort((a, b) => {
     if (sortMode === "title") {
@@ -308,10 +338,110 @@ function BarList({ items, mode }: { items: StatsBucket[]; mode: "count" | "watch
   );
 }
 
-function TimelineStatsPanel({ stats }: { stats: TimelineStats | null }) {
+function RuntimeAdjustmentDialog({
+  stats,
+  onClose,
+  onSaved,
+}: {
+  stats: RuntimeStats;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [draftMinutes, setDraftMinutes] = useState<Record<string, string>>(() => Object.fromEntries(
+    stats.estimatedItems.map((item) => [item.mediaId, String(Math.round(item.estimatedRuntimeSeconds / 60))]),
+  ));
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function saveRuntime(item: RuntimeEstimateItem) {
+    const minutes = Number(draftMinutes[item.mediaId]);
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+      setStatus("Bitte eine Laufzeit zwischen 1 und 1440 Minuten eintragen.");
+      return;
+    }
+
+    setSavingId(item.mediaId);
+    setStatus(null);
+    try {
+      await apiRequest(`/api/media/${item.mediaId}/runtime`, {
+        method: "PATCH",
+        body: JSON.stringify({ runtimeSeconds: Math.round(minutes * 60) }),
+      });
+      await onSaved();
+      setStatus(`Laufzeit fuer "${item.title}" wurde gespeichert.`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "Laufzeit konnte nicht gespeichert werden.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+      <section className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-4 py-3">
+          <div>
+            <h2 className="font-semibold">Laufzeiten anpassen</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              {stats.estimatedEvents} Einträge nutzen aktuell Schätzwerte: {stats.estimatedMovies} Filme, {stats.estimatedSeries} Serien, {stats.estimatedEpisodes} Episoden.
+            </p>
+          </div>
+          <button type="button" className="rounded-md p-2 text-slate-300 hover:bg-slate-800" onClick={onClose} aria-label="Schließen">
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="max-h-[62vh] overflow-y-auto p-4">
+          {stats.estimatedItems.length === 0 ? (
+            <p className="rounded-md border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">Alle sichtbaren WatchEvents haben bereits eine Laufzeit.</p>
+          ) : (
+            <div className="space-y-2">
+              {stats.estimatedItems.map((item) => (
+                <article key={item.mediaId} className="grid gap-3 rounded-md border border-slate-800 bg-slate-950 p-3 sm:grid-cols-[1fr_150px_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-medium">{item.seriesTitle ? `${item.seriesTitle} · ${item.title}` : item.title}</h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {[runtimeMediaLabel(item.type), item.year ?? "ohne Jahr", `${item.watchEvents} WatchEvent${item.watchEvents === 1 ? "" : "s"}`, `Schätzung ${formatDuration(item.estimatedRuntimeSeconds)}`].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <label className="block text-sm text-slate-300">
+                    Minuten
+                    <input
+                      className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2"
+                      inputMode="numeric"
+                      value={draftMinutes[item.mediaId] ?? ""}
+                      onChange={(event) => setDraftMinutes((current) => ({ ...current, [item.mediaId]: event.target.value }))}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-md bg-teal-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={savingId === item.mediaId}
+                    onClick={() => void saveRuntime(item)}
+                  >
+                    {savingId === item.mediaId ? "Speichert..." : "Speichern"}
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {status && <p className="border-t border-slate-800 px-4 py-3 text-sm text-slate-300">{status}</p>}
+      </section>
+    </div>
+  );
+}
+
+function TimelineStatsPanel({ stats, onRuntimeSaved }: { stats: TimelineStats | null; onRuntimeSaved: () => Promise<void> }) {
+  const [runtimeDialogOpen, setRuntimeDialogOpen] = useState(false);
+
   if (!stats) {
     return <p className="mt-5 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">Statistiken werden geladen...</p>;
   }
+
+  const runtime = stats.totals.runtime;
+  const runtimeHint = `Geschätzt: ${runtime.estimatedMovies} Filme, ${runtime.estimatedSeries} Serien, ${runtime.estimatedEpisodes} Episoden.`;
 
   return (
     <section className="mt-5 space-y-4">
@@ -319,12 +449,26 @@ function TimelineStatsPanel({ stats }: { stats: TimelineStats | null }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Gesamte Watchtime</h2>
-            <p className="mt-1 text-sm text-slate-400">Alle gespeicherten Filme, Serien und Episoden mit hinterlegter Laufzeit.</p>
+            <p className="mt-1 text-sm text-slate-400">Alle gespeicherten Filme, Serien und Episoden; fehlende Laufzeiten werden markiert geschätzt.</p>
           </div>
-          <p className="text-3xl font-semibold text-teal-200">{formatDuration(stats.totals.watchtimeSeconds)}</p>
+          <button
+            type="button"
+            className="rounded-md px-3 py-2 text-right hover:bg-slate-800"
+            title={runtimeHint}
+            onClick={() => setRuntimeDialogOpen(true)}
+          >
+            <span className="block text-3xl font-semibold text-teal-200">{formatDuration(stats.totals.watchtimeSeconds)}</span>
+            {runtime.estimatedEvents > 0 && (
+              <span className="mt-1 block text-xs text-slate-400">{runtime.estimatedEvents} geschätzte WatchEvents</span>
+            )}
+          </button>
         </div>
         <p className="mt-3 text-xs text-slate-500">{stats.sourceNote}</p>
       </article>
+
+      {runtimeDialogOpen && (
+        <RuntimeAdjustmentDialog stats={runtime} onClose={() => setRuntimeDialogOpen(false)} onSaved={onRuntimeSaved} />
+      )}
 
       <div className="grid gap-3 lg:grid-cols-3">
         <StatCard label="Letzte 7 Tage" stats={stats.periods.week} />
@@ -406,14 +550,23 @@ export function TimelinePage() {
   const [expandedSeasons, setExpandedSeasons] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([
-      apiRequest<TimelineItem[]>("/api/watch-events").then(setItems),
-      apiRequest<TimelineStats>("/api/watch-events/stats").then(setStats),
-    ]).catch((caught) => {
+  const loadTimeline = useCallback(async () => {
+    setError(null);
+    try {
+      const [loadedItems, loadedStats] = await Promise.all([
+        apiRequest<TimelineItem[]>("/api/watch-events"),
+        apiRequest<TimelineStats>("/api/watch-events/stats"),
+      ]);
+      setItems(loadedItems);
+      setStats(loadedStats);
+    } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Timeline konnte nicht geladen werden.");
-    });
+    }
   }, []);
+
+  useEffect(() => {
+    void loadTimeline();
+  }, [loadTimeline]);
 
   const filteredGroups = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -455,7 +608,7 @@ export function TimelinePage() {
 
       {error && <p className="mt-4 rounded-md border border-red-500/40 bg-red-950 p-4 text-red-100">{error}</p>}
 
-      <TimelineStatsPanel stats={stats} />
+      <TimelineStatsPanel stats={stats} onRuntimeSaved={loadTimeline} />
 
       <div className="mt-5 space-y-3">
         {filteredGroups.length === 0 ? (

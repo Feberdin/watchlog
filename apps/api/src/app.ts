@@ -35,6 +35,7 @@ import { seriesRoutes } from "./routes/series.js";
 import { swipeRoutes } from "./routes/swipe.js";
 import { cinemaRoutes } from "./routes/cinema.js";
 import { tvMemoryRoutes } from "./routes/tvMemory.js";
+import { shareRoutes } from "./routes/share.js";
 import { seedIntegrationSettingsFromEnv } from "./services/envSettings.js";
 
 function isAllowedBrowserOrigin(origin: string, env: AppEnv): boolean {
@@ -136,6 +137,7 @@ export async function buildApp(env: AppEnv) {
     await api.register(swipeRoutes);
     await api.register(cinemaRoutes);
     await api.register(tvMemoryRoutes);
+    await api.register(shareRoutes);
   }, { prefix: "/api" });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

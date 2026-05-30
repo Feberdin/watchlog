@@ -30,12 +30,18 @@ type CollageItem = {
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get("/dashboard", async (request) => {
     const user = request.requireUser();
-    const [events, movieCollageEvents, showCollageEvents, showsWithEpisodes, movieCount, episodeCount, rewatchCount] = await Promise.all([
+    const [events, genreEvents, movieCollageEvents, showCollageEvents, showsWithEpisodes, movieCount, episodeCount, rewatchCount] = await Promise.all([
       app.prisma.watchEvent.findMany({
         where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
         include: { media: true },
         orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
         take: 10,
+      }),
+      app.prisma.watchEvent.findMany({
+        where: { userId: user.id, media: { metadataSource: { not: "swipe-tmdb" } } },
+        include: { media: { include: { parent: true } } },
+        orderBy: [{ watchedAt: "desc" }, { createdAt: "desc" }],
+        take: 10000,
       }),
       app.prisma.watchEvent.findMany({
         where: {
@@ -112,6 +118,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         rewatches: rewatchCount,
       },
       collage: buildDashboardCollage(movieCollageEvents, showCollageEvents, showsWithEpisodes),
+      shareGenres: buildShareGenres(genreEvents),
       recent: events.map((event) => ({
         id: event.id,
         title: event.media.title,
@@ -126,6 +133,21 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 };
+
+function buildShareGenres(events: Array<{ media: { genres: string[]; parent?: { genres: string[] } | null } }>) {
+  const byName = new Map<string, string>();
+  for (const event of events) {
+    const genres = event.media.genres.length > 0 ? event.media.genres : event.media.parent?.genres ?? [];
+    for (const genre of genres) {
+      const normalized = genre.trim();
+      if (normalized) {
+        byName.set(normalized.toLocaleLowerCase("de-DE"), normalized);
+      }
+    }
+  }
+
+  return [...byName.values()].sort((left, right) => left.localeCompare(right, "de"));
+}
 
 function buildDashboardCollage(
   movieEvents: Array<{

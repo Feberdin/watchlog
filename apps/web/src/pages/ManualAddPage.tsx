@@ -82,11 +82,25 @@ export function ManualAddPage() {
   const [media, setMedia] = useState<MediaRecord[]>([]);
   const [missingPosters, setMissingPosters] = useState<MediaRecord[]>([]);
   const [posterBusyId, setPosterBusyId] = useState<string | null>(null);
+  const [deleteQuery, setDeleteQuery] = useState("");
 
   const deletableMedia = useMemo(
     () => media.filter(canDeleteMedia).sort((left, right) => left.title.localeCompare(right.title, "de")),
     [media],
   );
+
+  const visibleDeletableMedia = useMemo(() => {
+    const normalized = deleteQuery.trim().toLocaleLowerCase("de-DE");
+    if (!normalized) {
+      return deletableMedia;
+    }
+
+    return deletableMedia.filter((item) => [item.title, item.year?.toString(), item.tmdbId, item.metadataSource, ...item.genres]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("de-DE")
+      .includes(normalized));
+  }, [deleteQuery, deletableMedia]);
 
   useEffect(() => {
     void loadMedia().catch((caught) => {
@@ -454,12 +468,22 @@ export function ManualAddPage() {
       </section>
 
       <section className="mt-5 rounded-lg border border-slate-800 bg-slate-900 p-4">
-        <h2 className="text-lg font-semibold">Manuell angelegte Titel löschen</h2>
-        <p className="mt-1 text-sm text-slate-400">Jellyfin-verknüpfte Titel werden hier nicht gelöscht. Entferne dort nur einzelne WatchEvents.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Manuelle und TMDb-Titel löschen</h2>
+            <p className="mt-1 text-sm text-slate-400">Jellyfin-verknüpfte Titel bleiben geschützt. Hier kannst du verschriebene lokale oder per TMDb importierte Filme/Serien entfernen.</p>
+          </div>
+          <span className="flex min-w-64 max-w-full items-center gap-2 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+            <Search className="h-4 w-4 text-slate-500" aria-hidden="true" />
+            <input className="min-w-0 flex-1 bg-transparent outline-none" value={deleteQuery} onChange={(event) => setDeleteQuery(event.target.value)} placeholder="Löschliste filtern" />
+          </span>
+        </div>
         <div className="mt-4 space-y-2">
-          {deletableMedia.length === 0 ? (
-            <p className="rounded-md border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">Keine manuell löschbaren Titel vorhanden.</p>
-          ) : deletableMedia.map((item) => (
+          {visibleDeletableMedia.length === 0 ? (
+            <p className="rounded-md border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
+              {deletableMedia.length === 0 ? "Keine manuell löschbaren Titel vorhanden." : "Keine passenden Titel in der Löschliste gefunden."}
+            </p>
+          ) : visibleDeletableMedia.map((item) => (
             <article key={item.id} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-950 p-3">
               <PosterPreview
                 src={item.posterUrl}

@@ -8,6 +8,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { manualWatchEventSchema } from "@watchlog/shared";
 import { createManualWatchEvent } from "../services/watchEvents.js";
+import { resolveRuntimeSeconds } from "../services/watchtime.js";
 
 type WatchEventStatsRow = {
   watchedAt: Date | null;
@@ -19,6 +20,7 @@ type WatchEventStatsRow = {
     id: string;
     type: string;
     title: string;
+    year: number | null;
     runtimeSeconds: number | null;
     seasonNumber: number | null;
     parent: { id: string; title: string } | null;
@@ -40,11 +42,85 @@ type StatsBucket = {
   items: StatsDetail[];
 };
 
+type RuntimeEstimateItem = {
+  mediaId: string;
+  title: string;
+  type: string;
+  year: number | null;
+  seriesTitle: string | null;
+  estimatedRuntimeSeconds: number;
+  watchEvents: number;
+};
+
 const weekdayLabels = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const monthLabels = ["Jan", "Feb", "Maer", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 function secondsFor(row: WatchEventStatsRow) {
-  return row.durationSeconds ?? row.media.runtimeSeconds ?? 0;
+  return resolveRuntimeSeconds({
+    type: row.media.type,
+    durationSeconds: row.durationSeconds,
+    runtimeSeconds: row.media.runtimeSeconds,
+  }).seconds;
+}
+
+function buildRuntimeStats(rows: WatchEventStatsRow[]) {
+  const movieIds = new Set<string>();
+  const seriesIds = new Set<string>();
+  const episodeIds = new Set<string>();
+  const seasonIds = new Set<string>();
+  const estimatedItems = new Map<string, RuntimeEstimateItem>();
+  let estimatedEvents = 0;
+  let estimatedSeconds = 0;
+  let knownEvents = 0;
+
+  for (const row of rows) {
+    const runtime = resolveRuntimeSeconds({
+      type: row.media.type,
+      durationSeconds: row.durationSeconds,
+      runtimeSeconds: row.media.runtimeSeconds,
+    });
+
+    if (!runtime.estimated) {
+      if (runtime.seconds > 0) knownEvents += 1;
+      continue;
+    }
+
+    estimatedEvents += 1;
+    estimatedSeconds += runtime.seconds;
+    if (row.media.type === "movie") {
+      movieIds.add(row.media.id);
+    } else {
+      seriesIds.add(row.media.parent?.id ?? row.media.id);
+      if (row.media.type === "episode") episodeIds.add(row.media.id);
+      if (row.media.type === "season") seasonIds.add(row.media.id);
+    }
+
+    const existing = estimatedItems.get(row.media.id) ?? {
+      mediaId: row.media.id,
+      title: row.media.title,
+      type: row.media.type,
+      year: row.media.year,
+      seriesTitle: row.media.parent?.title ?? null,
+      estimatedRuntimeSeconds: runtime.seconds,
+      watchEvents: 0,
+    };
+    existing.watchEvents += 1;
+    estimatedItems.set(row.media.id, existing);
+  }
+
+  return {
+    knownEvents,
+    estimatedEvents,
+    estimatedSeconds,
+    estimatedMovies: movieIds.size,
+    estimatedSeries: seriesIds.size,
+    estimatedEpisodes: episodeIds.size,
+    estimatedSeasons: seasonIds.size,
+    estimatedItems: [...estimatedItems.values()].sort((left, right) => {
+      if (right.watchEvents !== left.watchEvents) return right.watchEvents - left.watchEvents;
+      return left.title.localeCompare(right.title, "de");
+    }).slice(0, 100),
+  };
 }
 
 function periodStart(days: number) {
@@ -223,7 +299,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
       year: row.media.year,
       genres: row.media.genres.length > 0 ? row.media.genres : row.media.parent?.genres ?? [],
       cast: row.media.cast.length > 0 ? row.media.cast : row.media.parent?.cast ?? [],
-      runtimeSeconds: row.durationSeconds ?? row.media.runtimeSeconds,
+      runtimeSeconds: secondsFor(row as WatchEventStatsRow),
       posterUrl: row.media.posterUrl,
       watchedAt: row.watchedAt?.toISOString() ?? null,
       datePrecision: row.datePrecision,
@@ -265,6 +341,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     const jellyfinRows = typedRows.filter((row) => row.source === "jellyfin");
     const datedJellyfinRows = datedTypedRows.filter((row) => row.source === "jellyfin");
     const titles = new Map<string, { id: string; title: string; type: string; count: number; watchtimeSeconds: number }>();
+    const runtime = buildRuntimeStats(typedRows);
 
     for (const row of jellyfinRows) {
       if (!row.watchedAt) continue;
@@ -313,7 +390,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     const topMonth = topEntry(monthlyTrend, "count");
 
     return {
-      sourceNote: "Gesamte Watchtime summiert alle gespeicherten Filme, Serien und Episoden mit Laufzeit. Wochentage, Trends und Fun Facts beruecksichtigen nur datierbare Jellyfin-WatchEvents.",
+      sourceNote: "Gesamte Watchtime summiert alle gespeicherten Filme, Serien und Episoden. Fehlende Laufzeiten werden sichtbar geschaetzt, damit die Summe nicht kuenstlich zu niedrig ist. Wochentage, Trends und Fun Facts beruecksichtigen nur datierbare Jellyfin-WatchEvents.",
       periods: {
         week: summarizePeriod(datedJellyfinRows, periodStart(7)),
         month: summarizePeriod(datedJellyfinRows, monthStart()),
@@ -326,6 +403,7 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
         jellyfinWatchtimeSeconds,
         rewatches: typedRows.filter((row) => row.rewatchIndex > 1).length,
         firstWatchedAt: firstWatchedAt?.toISOString() ?? null,
+        runtime,
       },
       weekdays: combinedWeekdays,
       monthlyTrend,

@@ -71,6 +71,10 @@ export const manualWatchEventSchema = z.object({
   path: ["mediaId"],
 });
 
+export const mediaRuntimeUpdateSchema = z.object({
+  runtimeSeconds: z.number().int().min(60).max(24 * 60 * 60).nullable(),
+});
+
 export const jellyfinSettingsSchema = z.object({
   jellyfinBaseUrl: z.string().url().nullable().optional(),
   jellyfinApiKey: nullableTrimmedString,
@@ -142,6 +146,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ManualMediaInput = z.infer<typeof manualMediaSchema>;
 export type ManualWatchEventInput = z.infer<typeof manualWatchEventSchema>;
+export type MediaRuntimeUpdateInput = z.infer<typeof mediaRuntimeUpdateSchema>;
 export type JellyfinSettingsInput = z.infer<typeof jellyfinSettingsSchema>;
 export type TmdbSettingsInput = z.infer<typeof tmdbSettingsSchema>;
 export type JellyseerrSettingsInput = z.infer<typeof jellyseerrSettingsSchema>;

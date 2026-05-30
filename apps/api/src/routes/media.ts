@@ -6,7 +6,7 @@
  */
 
 import type { FastifyPluginAsync } from "fastify";
-import { manualMediaSchema } from "@watchlog/shared";
+import { manualMediaSchema, mediaRuntimeUpdateSchema } from "@watchlog/shared";
 import { getSetting } from "../services/settings.js";
 import { getTmdbDetails, type TmdbSettingsForClient } from "../services/tmdbClient.js";
 import {
@@ -112,6 +112,27 @@ export const mediaRoutes: FastifyPluginAsync = async (app) => {
     });
     reply.code(201);
     return mediaResponse(media);
+  });
+
+  app.patch("/media/:id/runtime", async (request) => {
+    request.requireUser();
+    const { id } = request.params as { id: string };
+    const input = mediaRuntimeUpdateSchema.parse(request.body);
+    const media = await app.prisma.media.findUnique({ where: { id } });
+
+    if (!media) {
+      throw app.httpErrors.notFound("Medium wurde nicht gefunden.");
+    }
+
+    const updated = await app.prisma.media.update({
+      where: { id },
+      data: {
+        runtimeSeconds: input.runtimeSeconds,
+        metadataLastSyncedAt: new Date(),
+      },
+    });
+
+    return mediaResponse(updated);
   });
 
   app.post("/media/:id/poster/refresh", async (request) => {
