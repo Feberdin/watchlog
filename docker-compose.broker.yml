@@ -1,13 +1,20 @@
 # Purpose: GitOps Docker Compose stack for WatchLog on Unraid through a Deployment Broker.
 # Input/Output: The broker resolves secret:// values and starts WatchLog plus PostgreSQL.
 # Invariants: No real secrets in git, no privileged containers, no host network, and no unsafe host mounts.
-# Debugging: Use broker logs/status first, then WatchLog `/api/health`.
+# Debugging: Use broker logs/status first, then WatchLog `/readyz`.
+
+x-watchlog-logging: &watchlog-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   db:
     image: postgres:16-alpine
     container_name: watchlog-db
     restart: unless-stopped
+    logging: *watchlog-logging
     environment:
       POSTGRES_DB: watchlog
       POSTGRES_USER: watchlog
@@ -22,16 +29,21 @@ services:
       retries: 10
 
   watchlog:
-    build: .
+    build:
+      context: .
+      args:
+        APP_COMMIT: ${APP_COMMIT:-unknown}
     pull_policy: build
     container_name: watchlog
     restart: unless-stopped
+    logging: *watchlog-logging
     depends_on:
       db:
         condition: service_healthy
     environment:
       APP_URL: ${APP_URL:-http://localhost:8111}
       APP_PORT: ${APP_PORT:-8111}
+      APP_COMMIT: ${APP_COMMIT:-unknown}
       TZ: ${TZ:-Europe/Berlin}
       DATABASE_URL: secret://WATCHLOG_DATABASE_URL
       SESSION_SECRET: secret://WATCHLOG_SESSION_SECRET
@@ -51,7 +63,7 @@ services:
       - watchlog-config:/config
       - watchlog-cache:/cache
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 5

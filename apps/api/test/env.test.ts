@@ -37,4 +37,17 @@ describe("loadEnv", () => {
     expect(env.REGISTRATION_ENABLED).toBe(true);
     expect(env.SECURE_COOKIES).toBe(true);
   });
+
+  it("fails fast when required secrets are missing", () => {
+    expect(() => loadEnv(baseEnv({
+      DATABASE_URL: undefined,
+      SESSION_SECRET: undefined,
+    }))).toThrow(/DATABASE_URL|SESSION_SECRET/);
+  });
+
+  it("keeps the deployment commit available for startup logs", () => {
+    const env = loadEnv(baseEnv({ APP_COMMIT: "abc123" }));
+
+    expect(env.APP_COMMIT).toBe("abc123");
+  });
 });

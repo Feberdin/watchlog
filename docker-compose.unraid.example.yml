@@ -1,13 +1,20 @@
 # Purpose: Unraid-oriented Compose example using appdata bind mounts and normal .env variables.
 # Input/Output: Reads `.env`, stores PostgreSQL/config/cache under `/mnt/user/appdata/watchlog`.
 # Invariants: Do not paste real secrets into git, chat, issues, or screenshots.
-# Debugging: Use Unraid container logs and verify `/mnt/user/appdata/watchlog` permissions.
+# Debugging: Use Unraid container logs, `/readyz`, and verify `/mnt/user/appdata/watchlog` permissions.
+
+x-watchlog-logging: &watchlog-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   db:
     image: postgres:16-alpine
     container_name: watchlog-db
     restart: unless-stopped
+    logging: *watchlog-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-watchlog}
       POSTGRES_USER: ${POSTGRES_USER:-watchlog}
@@ -22,16 +29,21 @@ services:
       retries: 10
 
   watchlog:
-    build: .
+    build:
+      context: .
+      args:
+        APP_COMMIT: ${APP_COMMIT:-unknown}
     pull_policy: build
     container_name: watchlog
     restart: unless-stopped
+    logging: *watchlog-logging
     depends_on:
       db:
         condition: service_healthy
     environment:
       APP_URL: ${APP_URL:-http://tower.local:8111}
       APP_PORT: 8111
+      APP_COMMIT: ${APP_COMMIT:-unknown}
       TZ: ${TZ:-Europe/Berlin}
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
@@ -51,7 +63,7 @@ services:
       - /mnt/user/appdata/watchlog/config:/config
       - /mnt/user/appdata/watchlog/cache:/cache
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 5

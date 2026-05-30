@@ -274,17 +274,20 @@ Report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
-### `db: error` in `/api/health`
+### `unhealthy` in `/readyz` or `db: error` in `/api/health`
 
 Check:
 
 ```bash
+curl http://localhost:8111/healthz
+curl http://localhost:8111/readyz
 docker compose logs db
 docker compose logs watchlog
 docker compose exec db pg_isready -U watchlog -d watchlog
 ```
 
 Verify that `POSTGRES_PASSWORD` and `DATABASE_URL` use the same password.
+The Docker healthcheck uses `/readyz`; `/healthz` only confirms that the API process is alive.
 
 ### Login works but immediately returns to login
 

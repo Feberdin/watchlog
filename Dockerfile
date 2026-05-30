@@ -16,6 +16,8 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN npm install
 
 FROM deps AS build
+ARG APP_COMMIT=unknown
+ENV APP_COMMIT=$APP_COMMIT
 COPY . .
 RUN npm run prisma:generate
 RUN npm run build -w @watchlog/shared
@@ -25,6 +27,8 @@ RUN mkdir -p apps/api/web && cp -R apps/web/dist/* apps/api/web/
 
 FROM base AS runtime
 ENV NODE_ENV=production
+ARG APP_COMMIT=unknown
+ENV APP_COMMIT=$APP_COMMIT
 WORKDIR /app
 COPY --from=build /app/package.json /app/package.json
 COPY --from=build /app/node_modules /app/node_modules
@@ -32,9 +36,10 @@ COPY --from=build /app/apps/api/package.json /app/apps/api/package.json
 COPY --from=build /app/apps/api/node_modules /app/apps/api/node_modules
 COPY --from=build /app/apps/api/dist /app/apps/api/dist
 COPY --from=build /app/apps/api/prisma /app/apps/api/prisma
+COPY --from=build /app/apps/api/scripts /app/apps/api/scripts
 COPY --from=build /app/apps/api/web /app/apps/api/web
 COPY --from=build /app/packages/shared/package.json /app/packages/shared/package.json
 COPY --from=build /app/packages/shared/dist /app/packages/shared/dist
 EXPOSE 8111
 WORKDIR /app/apps/api
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["node", "scripts/docker-entrypoint.mjs"]

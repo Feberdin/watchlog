@@ -97,6 +97,7 @@ export async function buildApp(env: AppEnv) {
   await app.register(prismaPlugin);
   await seedIntegrationSettingsFromEnv(app.prisma, env);
   await app.register(authPlugin, { secureCookies: env.SECURE_COOKIES || env.APP_URL.startsWith("https://") });
+  await app.register(healthRoutes);
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
