@@ -40,10 +40,31 @@ function readCommitFromGit(repoRoot) {
 
   const refPath = path.join(gitDir, head.slice("ref: ".length));
   if (!fs.existsSync(refPath)) {
-    return null;
+    return readCommitFromPackedRefs(gitDir, head.slice("ref: ".length));
   }
 
   return fs.readFileSync(refPath, "utf8").trim();
+}
+
+function readCommitFromPackedRefs(gitDir, refName) {
+  const packedRefsPath = path.join(gitDir, "packed-refs");
+  if (!fs.existsSync(packedRefsPath)) {
+    return null;
+  }
+
+  const packedRefs = fs.readFileSync(packedRefsPath, "utf8").split("\n");
+  for (const line of packedRefs) {
+    if (!line || line.startsWith("#") || line.startsWith("^")) {
+      continue;
+    }
+
+    const [commit, packedRefName] = line.trim().split(/\s+/, 2);
+    if (packedRefName === refName) {
+      return commit;
+    }
+  }
+
+  return null;
 }
 
 function normalizeCommit(value) {
