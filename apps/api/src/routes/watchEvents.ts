@@ -7,8 +7,18 @@
 
 import type { FastifyPluginAsync } from "fastify";
 import { manualWatchEventSchema } from "@watchlog/shared";
+import { getSetting } from "../services/settings.js";
 import { createManualWatchEvent } from "../services/watchEvents.js";
+import { refreshTmdbSeriesCatalog } from "../services/tmdbSeriesCatalog.js";
+import type { TmdbSettingsForClient } from "../services/tmdbClient.js";
 import { resolveRuntimeSeconds } from "../services/watchtime.js";
+
+const tmdbDefaults: TmdbSettingsForClient = {
+  tmdbBearerToken: null,
+  preferredLanguage: "de-DE",
+  fallbackLanguage: "en-US",
+  imageBaseUrl: "https://image.tmdb.org/t/p",
+};
 
 type WatchEventStatsRow = {
   watchedAt: Date | null;
@@ -59,7 +69,7 @@ function secondsFor(row: WatchEventStatsRow) {
   return resolveRuntimeSeconds({
     type: row.media.type,
     durationSeconds: row.durationSeconds,
-    runtimeSeconds: row.media.runtimeSeconds ?? (row.media.type === "episode" ? row.media.parent?.runtimeSeconds ?? null : null),
+    runtimeSeconds: row.media.runtimeSeconds,
   }).seconds;
 }
 
@@ -77,7 +87,7 @@ function buildRuntimeStats(rows: WatchEventStatsRow[]) {
     const runtime = resolveRuntimeSeconds({
       type: row.media.type,
       durationSeconds: row.durationSeconds,
-      runtimeSeconds: row.media.runtimeSeconds ?? (row.media.type === "episode" ? row.media.parent?.runtimeSeconds ?? null : null),
+      runtimeSeconds: row.media.runtimeSeconds,
     });
 
     if (!runtime.estimated) {
@@ -432,6 +442,19 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     const user = request.requireUser();
     const input = manualWatchEventSchema.parse(request.body);
     const event = await createManualWatchEvent(app.prisma, user.id, input);
+    const media = await app.prisma.media.findUnique({ where: { id: event.mediaId } });
+
+    // Why this exists: manual show entries should immediately expose seasons
+    // and episodes instead of becoming a single opaque "show" row.
+    if (media?.type === "show") {
+      const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
+      if ((settings as TmdbSettingsForClient).tmdbBearerToken) {
+        await refreshTmdbSeriesCatalog(app.prisma, settings as TmdbSettingsForClient, media).catch((error) => {
+          request.log.warn({ error, mediaId: media.id }, "TMDb-Serienkatalog fuer manuellen Eintrag konnte nicht aktualisiert werden.");
+        });
+      }
+    }
+
     reply.code(201);
     return event;
   });

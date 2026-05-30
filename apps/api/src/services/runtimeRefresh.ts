@@ -1,7 +1,7 @@
 /**
- * Purpose: Refresh missing WatchLog runtimes from TMDb for already watched media.
- * Input/Output: Current user's estimated runtime candidates become updated Media rows when TMDb has data.
- * Invariants: Existing positive runtimes are never overwritten; TMDb secrets stay inside settings and logs.
+ * Purpose: Refresh WatchLog runtimes and TV episode catalogs from TMDb for already watched media.
+ * Input/Output: Current user's runtime candidates become updated Media rows and missing show episodes when TMDb has data.
+ * Invariants: Movies keep known runtimes; shows are recalculated from regular aired episodes; TMDb secrets stay inside settings.
  * Debugging: The returned detail rows explain whether a title was updated, skipped, unchanged, or failed.
  */
 
@@ -13,6 +13,7 @@ import {
   type TmdbSettingsForClient,
   type TmdbTvEpisode,
 } from "./tmdbClient.js";
+import { refreshTmdbSeriesCatalog, type TmdbSeasonEpisodeCache } from "./tmdbSeriesCatalog.js";
 import { resolveRuntimeSeconds } from "./watchtime.js";
 
 type RuntimeRefreshMedia = {
@@ -26,6 +27,7 @@ type RuntimeRefreshMedia = {
   runtimeSeconds: number | null;
   tmdbId: string | null;
   imdbId: string | null;
+  tvdbId: string | null;
   posterPath: string | null;
   backdropPath: string | null;
   posterUrl: string | null;
@@ -92,7 +94,7 @@ function effectiveRuntimeSeconds(media: RuntimeRefreshMedia, durationSeconds: nu
   return resolveRuntimeSeconds({
     type: media.type,
     durationSeconds,
-    runtimeSeconds: media.runtimeSeconds ?? (media.type === "episode" ? media.parent?.runtimeSeconds ?? null : null),
+    runtimeSeconds: media.runtimeSeconds,
   });
 }
 
@@ -130,9 +132,30 @@ async function updateMovieOrShowRuntime(
   prisma: PrismaClient,
   settings: TmdbSettingsForClient,
   media: RuntimeRefreshMedia,
+  seasonCache: TmdbSeasonEpisodeCache,
 ) {
   if (media.type !== "movie" && media.type !== "show") {
     return detail("skipped", media, "Nur Filme und Serien koennen direkt per TMDb-Detail aktualisiert werden.");
+  }
+
+  if (media.type === "show") {
+    const result = await refreshTmdbSeriesCatalog(prisma, settings, media, { seasonCache });
+    if (!result.found) {
+      return detail("skipped", media, "Keine sichere TMDb-Serie gefunden.");
+    }
+    if (!result.runtimeSeconds) {
+      return detail("unchanged", media, "TMDb liefert fuer diese Serie keine Episodenlaufzeiten.");
+    }
+
+    const catalogInfo = [
+      `${result.episodeCount} Episode(n)`,
+      `${result.seasonCount} Staffel(n)`,
+      result.createdEpisodes > 0 ? `${result.createdEpisodes} neu angelegt` : null,
+      result.updatedEpisodes > 0 ? `${result.updatedEpisodes} aktualisiert` : null,
+      result.missingRuntimeEpisodes > 0 ? `${result.missingRuntimeEpisodes} ohne Laufzeit` : null,
+    ].filter(Boolean).join(", ");
+
+    return detail("updated", media, `Serienlaufzeit aus TMDb-Episoden summiert (${catalogInfo}).`, result.runtimeSeconds);
   }
 
   const tmdbId = await resolveTmdbId(settings, media);
@@ -173,7 +196,7 @@ async function updateEpisodeOrSeasonRuntime(
   prisma: PrismaClient,
   settings: TmdbSettingsForClient,
   media: RuntimeRefreshMedia,
-  seasonCache: Map<string, Promise<TmdbTvEpisode[]>>,
+  seasonCache: TmdbSeasonEpisodeCache,
 ) {
   if ((media.type !== "episode" && media.type !== "season") || !media.parent) {
     return detail("skipped", media, "Kein Serienkontext vorhanden.");
@@ -272,7 +295,7 @@ export async function refreshEstimatedRuntimesFromTmdb(
   const candidates = new Map<string, RuntimeRefreshMedia>();
   for (const row of rows as RuntimeRefreshWatchEvent[]) {
     const runtime = effectiveRuntimeSeconds(row.media, row.durationSeconds);
-    if (runtime.estimated) {
+    if (runtime.estimated || row.media.type === "show" || row.media.type === "season") {
       candidates.set(row.media.id, row.media);
     }
   }
@@ -285,7 +308,7 @@ export async function refreshEstimatedRuntimesFromTmdb(
   for (const media of limitedCandidates) {
     try {
       const result = media.type === "movie" || media.type === "show"
-        ? await updateMovieOrShowRuntime(prisma, settings, media)
+        ? await updateMovieOrShowRuntime(prisma, settings, media, seasonCache)
         : await updateEpisodeOrSeasonRuntime(prisma, settings, media, seasonCache);
       details.push(result);
     } catch (error) {

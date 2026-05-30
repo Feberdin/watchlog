@@ -167,7 +167,7 @@ export async function buildShareRecap(
     const runtime = resolveRuntimeSeconds({
       type: event.media.type,
       durationSeconds: event.durationSeconds,
-      runtimeSeconds: event.media.runtimeSeconds ?? (event.media.type === "episode" ? event.media.parent?.runtimeSeconds ?? null : null),
+      runtimeSeconds: event.media.runtimeSeconds,
     });
     watchtimeSeconds += runtime.seconds;
 

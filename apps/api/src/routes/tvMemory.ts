@@ -11,6 +11,7 @@ import type { CinemaMemoryCandidate } from "@watchlog/shared";
 import type { PrismaClient, User } from "@prisma/client";
 import { getSetting } from "../services/settings.js";
 import { getTmdbTvMemoryShows, type TmdbSettingsForClient, type TmdbTvMemoryShow } from "../services/tmdbClient.js";
+import { refreshTmdbSeriesCatalog } from "../services/tmdbSeriesCatalog.js";
 import { applySwipeAction } from "../services/swipe.js";
 import { nextRewatchIndex } from "../services/watchEvents.js";
 
@@ -156,7 +157,19 @@ export const tvMemoryRoutes: FastifyPluginAsync = async (app) => {
     const user = request.requireUser();
     const input = cinemaActionSchema.parse(request.body);
     if (input.action === "seen") {
-      return markTvMemorySeen(app.prisma, user, input.mediaId);
+      const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
+      const result = await markTvMemorySeen(app.prisma, user, input.mediaId);
+      const media = await app.prisma.media.findUnique({ where: { id: input.mediaId } });
+
+      // Why this exists: TV-memory shows should not hide their season tree
+      // until a separate Jellyfin catalog sync happens.
+      if (media?.type === "show" && (settings as TmdbSettingsForClient).tmdbBearerToken) {
+        await refreshTmdbSeriesCatalog(app.prisma, settings as TmdbSettingsForClient, media).catch((error) => {
+          request.log.warn({ error, mediaId: media.id }, "TMDb-Serienkatalog fuer TV-Erinnerung konnte nicht aktualisiert werden.");
+        });
+      }
+
+      return result;
     }
 
     return applySwipeAction(app.prisma, user, input.mediaId, input.action);

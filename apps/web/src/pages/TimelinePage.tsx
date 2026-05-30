@@ -357,6 +357,7 @@ function RuntimeAdjustmentDialog({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const maxRuntimeMinutes = 200000;
   const [draftMinutes, setDraftMinutes] = useState<Record<string, string>>(() => Object.fromEntries(
     stats.estimatedItems.map((item) => [item.mediaId, String(Math.round(item.estimatedRuntimeSeconds / 60))]),
   ));
@@ -372,8 +373,8 @@ function RuntimeAdjustmentDialog({
 
   async function saveRuntime(item: RuntimeEstimateItem) {
     const minutes = Number(draftMinutes[item.mediaId]);
-    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-      setStatus("Bitte eine Laufzeit zwischen 1 und 1440 Minuten eintragen.");
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > maxRuntimeMinutes) {
+      setStatus(`Bitte eine Laufzeit zwischen 1 und ${maxRuntimeMinutes.toLocaleString("de-DE")} Minuten eintragen.`);
       return;
     }
 
@@ -395,7 +396,7 @@ function RuntimeAdjustmentDialog({
 
   async function refreshFromTmdb() {
     setRefreshingTmdb(true);
-    setStatus("TMDb-Laufzeiten werden aktualisiert...");
+    setStatus("TMDb-Laufzeiten und Serienkatalog werden aktualisiert...");
     try {
       const result = await apiRequest<RuntimeRefreshResult>("/api/media/runtime/refresh-tmdb", {
         method: "POST",
@@ -424,7 +425,7 @@ function RuntimeAdjustmentDialog({
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-700"
-              disabled={refreshingTmdb || stats.estimatedEvents === 0}
+              disabled={refreshingTmdb}
               onClick={() => void refreshFromTmdb()}
             >
               <RefreshCw className={`h-4 w-4 ${refreshingTmdb ? "animate-spin" : ""}`} aria-hidden="true" />
