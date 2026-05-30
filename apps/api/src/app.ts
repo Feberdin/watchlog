@@ -37,6 +37,7 @@ import { cinemaRoutes } from "./routes/cinema.js";
 import { tvMemoryRoutes } from "./routes/tvMemory.js";
 import { shareRoutes } from "./routes/share.js";
 import { seedIntegrationSettingsFromEnv } from "./services/envSettings.js";
+import { sanitizeRequestForLog } from "./utils/logging.js";
 
 function isAllowedBrowserOrigin(origin: string, env: AppEnv): boolean {
   const configuredOrigins = new Set([
@@ -69,6 +70,9 @@ export async function buildApp(env: AppEnv) {
   const app = fastify({
     logger: {
       level: env.LOG_LEVEL,
+      serializers: {
+        req: sanitizeRequestForLog,
+      },
       redact: ["req.headers.authorization", "req.headers.cookie", "body.password", "body.jellyfinApiKey", "body.tmdbBearerToken", "body.jellyseerrApiKey"],
     },
   });
