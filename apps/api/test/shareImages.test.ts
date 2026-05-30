@@ -6,8 +6,10 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { buildShareRecap } from "../src/services/shareImages.js";
+import { buildShareRecap, renderShareImage } from "../src/services/shareImages.js";
+import { customPosterRef } from "../src/services/posterCache.js";
 
 function fakePrisma(rows: unknown[]) {
   return {
@@ -100,5 +102,36 @@ describe("share recap summaries", () => {
     expect(recap.summary.posterCount).toBe(0);
     expect(recap.summary.posterlessCount).toBe(1);
     expect(recap.items).toEqual([]);
+  });
+
+  it("renders every poster in complete dashboard exports", async () => {
+    const rows = Array.from({ length: 190 }, (_, index) => ({
+      mediaId: `movie-${index}`,
+      watchedAt: new Date(Date.UTC(2026, 0, 1, 20, index)),
+      createdAt: new Date(Date.UTC(2026, 0, 1, 20, index)),
+      durationSeconds: null,
+      media: {
+        id: `movie-${index}`,
+        title: `Movie ${index}`,
+        originalTitle: null,
+        type: "movie",
+        year: 2026,
+        genres: ["Drama"],
+        posterUrl: customPosterRef(`movie-${index}`),
+        runtimeSeconds: 6000,
+        parent: null,
+      },
+    }));
+
+    const image = await renderShareImage(fakePrisma(rows), "user-1", { year: 2026 });
+    const metadata = await sharp(image).metadata();
+    const pixelInsideLastTile = await sharp(image)
+      .extract({ left: 198, top: 1142, width: 1, height: 1 })
+      .raw()
+      .toBuffer();
+
+    expect(metadata.width).toBe(1080);
+    expect(metadata.height).toBe(1350);
+    expect([...pixelInsideLastTile.subarray(0, 3)]).not.toEqual([15, 23, 42]);
   });
 });

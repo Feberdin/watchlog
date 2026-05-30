@@ -70,7 +70,6 @@ const IMAGE_PADDING = 54;
 const HEADER_HEIGHT = 190;
 const FOOTER_HEIGHT = 70;
 const TILE_GAP = 5;
-const MAX_VISIBLE_POSTERS = 180;
 const SVG_FONT = "DejaVu Sans, Liberation Sans, Arial, sans-serif";
 
 function escapeXml(value: string) {
@@ -221,19 +220,23 @@ export async function buildShareRecap(
 function gridFor(count: number) {
   const gridWidth = IMAGE_WIDTH - IMAGE_PADDING * 2;
   const gridHeight = IMAGE_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - IMAGE_PADDING;
-  let columns = Math.max(3, Math.ceil(Math.sqrt(count * 0.85)));
-  let tileWidth = 0;
-  let tileHeight = 0;
-  let rows = 0;
+  const maxColumnsWithVisibleTiles = Math.max(1, Math.min(count, Math.floor((gridWidth + TILE_GAP) / (1 + TILE_GAP))));
 
-  while (columns <= 24) {
-    rows = Math.ceil(count / columns);
-    tileWidth = Math.floor((gridWidth - TILE_GAP * (columns - 1)) / columns);
-    tileHeight = Math.floor(tileWidth * 1.5);
-    if (rows * tileHeight + TILE_GAP * (rows - 1) <= gridHeight) break;
-    columns += 1;
+  // Why this exists: complete exports must include every poster, even when
+  // hundreds of titles have to fit into the fixed social-media image size.
+  for (let columns = 1; columns <= maxColumnsWithVisibleTiles; columns += 1) {
+    const rows = Math.ceil(count / columns);
+    const tileWidth = Math.floor((gridWidth - TILE_GAP * (columns - 1)) / columns);
+    const tileHeight = Math.max(1, Math.floor(tileWidth * 1.5));
+    if (tileWidth >= 1 && rows * tileHeight + TILE_GAP * (rows - 1) <= gridHeight) {
+      return { columns, rows, tileWidth, tileHeight, gridWidth };
+    }
   }
 
+  const columns = maxColumnsWithVisibleTiles;
+  const rows = Math.ceil(count / columns);
+  const tileWidth = Math.max(1, Math.floor((gridWidth - TILE_GAP * (columns - 1)) / columns));
+  const tileHeight = Math.max(1, Math.floor(tileWidth * 1.5));
   return { columns, rows, tileWidth, tileHeight, gridWidth };
 }
 
@@ -256,12 +259,11 @@ function headerSvg(summary: ShareRecapSummary) {
   `);
 }
 
-function footerSvg(visibleCount: number, totalCount: number) {
-  const extra = totalCount > visibleCount ? ` · +${totalCount - visibleCount} weitere Poster` : "";
+function footerSvg() {
   return Buffer.from(`
     <svg width="${IMAGE_WIDTH}" height="${FOOTER_HEIGHT}" viewBox="0 0 ${IMAGE_WIDTH} ${FOOTER_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
       <rect width="${IMAGE_WIDTH}" height="${FOOTER_HEIGHT}" fill="#0f172a"/>
-      <text x="${IMAGE_PADDING}" y="42" fill="#cbd5e1" font-family="${SVG_FONT}" font-size="22" font-weight="700">WatchLog${escapeXml(extra)}</text>
+      <text x="${IMAGE_PADDING}" y="42" fill="#cbd5e1" font-family="${SVG_FONT}" font-size="22" font-weight="700">WatchLog</text>
       <text x="${IMAGE_WIDTH - IMAGE_PADDING}" y="42" text-anchor="end" fill="#64748b" font-family="${SVG_FONT}" font-size="18">share.watchlog</text>
     </svg>
   `);
@@ -302,16 +304,15 @@ export async function renderShareImage(
   options: { year?: number; genre?: string | null } = {},
 ) {
   const { summary, items } = await buildShareRecap(prisma, userId, options);
-  const visibleItems = items.slice(0, MAX_VISIBLE_POSTERS);
-  const itemCount = Math.max(1, visibleItems.length);
+  const itemCount = Math.max(1, items.length);
   const grid = gridFor(itemCount);
   const startY = HEADER_HEIGHT;
   const composites: OverlayOptions[] = [
     { input: headerSvg(summary), left: 0, top: 0 },
-    { input: footerSvg(visibleItems.length, items.length), left: 0, top: IMAGE_HEIGHT - FOOTER_HEIGHT },
+    { input: footerSvg(), left: 0, top: IMAGE_HEIGHT - FOOTER_HEIGHT },
   ];
 
-  if (visibleItems.length === 0) {
+  if (items.length === 0) {
     const emptyItem: SharePosterItem = {
       key: "empty",
       title: "Noch keine gesehenen Titel",
@@ -328,12 +329,12 @@ export async function renderShareImage(
       top: startY,
     });
   } else {
-    const usedColumns = Math.min(grid.columns, visibleItems.length);
+    const usedColumns = Math.min(grid.columns, items.length);
     const usedGridWidth = usedColumns * grid.tileWidth + TILE_GAP * (usedColumns - 1);
     const gridLeft = Math.round((IMAGE_WIDTH - usedGridWidth) / 2);
 
-    for (let index = 0; index < visibleItems.length; index += 1) {
-      const item = visibleItems[index]!;
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index]!;
       const column = index % grid.columns;
       const row = Math.floor(index / grid.columns);
       const left = gridLeft + column * (grid.tileWidth + TILE_GAP);
