@@ -19,6 +19,7 @@ FROM deps AS build
 ARG APP_COMMIT=unknown
 ENV APP_COMMIT=$APP_COMMIT
 COPY . .
+RUN node apps/api/scripts/write-build-info.mjs
 RUN npm run prisma:generate
 RUN npm run build -w @watchlog/shared
 RUN npm run build -w @watchlog/web

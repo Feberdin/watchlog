@@ -6,6 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 function log(event, data = {}) {
   console.log(JSON.stringify({
@@ -32,7 +33,8 @@ function run(command, args) {
 log("migration_started", {
   command: "prisma migrate deploy",
 });
-const migration = await run("npx", ["prisma", "migrate", "deploy"]);
+const prismaCli = path.resolve(process.cwd(), "../../node_modules/prisma/build/index.js");
+const migration = await run("node", [prismaCli, "migrate", "deploy"]);
 if (migration.code !== 0) {
   log("migration_failed", {
     exitCode: migration.code,

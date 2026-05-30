@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { BUILD_COMMIT } from "../generated/buildInfo.js";
 
 // Why this exists:
 // Docker Compose injects every environment value as a string. `z.coerce.boolean()`
@@ -38,7 +39,7 @@ const booleanFromEnv = z
 
 const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
-  APP_COMMIT: z.string().min(1).default("unknown"),
+  APP_COMMIT: z.string().min(1).default(BUILD_COMMIT),
   APP_URL: z.string().url().default("http://localhost:8111"),
   APP_PORT: z.coerce.number().int().min(1).max(65535).default(8111),
   DATABASE_URL: z.string().min(1),
