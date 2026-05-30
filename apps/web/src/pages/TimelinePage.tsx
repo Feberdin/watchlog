@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, Search, Sparkles, X } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock3, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import type { TimelineGroup, TimelineItem } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
@@ -63,6 +63,16 @@ type RuntimeStats = {
   estimatedEpisodes: number;
   estimatedSeasons: number;
   estimatedItems: RuntimeEstimateItem[];
+};
+
+type RuntimeRefreshResult = {
+  scanned: number;
+  candidates: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  message: string;
 };
 
 type TimelineStats = {
@@ -351,7 +361,14 @@ function RuntimeAdjustmentDialog({
     stats.estimatedItems.map((item) => [item.mediaId, String(Math.round(item.estimatedRuntimeSeconds / 60))]),
   ));
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [refreshingTmdb, setRefreshingTmdb] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraftMinutes(Object.fromEntries(
+      stats.estimatedItems.map((item) => [item.mediaId, String(Math.round(item.estimatedRuntimeSeconds / 60))]),
+    ));
+  }, [stats.estimatedItems]);
 
   async function saveRuntime(item: RuntimeEstimateItem) {
     const minutes = Number(draftMinutes[item.mediaId]);
@@ -376,6 +393,23 @@ function RuntimeAdjustmentDialog({
     }
   }
 
+  async function refreshFromTmdb() {
+    setRefreshingTmdb(true);
+    setStatus("TMDb-Laufzeiten werden aktualisiert...");
+    try {
+      const result = await apiRequest<RuntimeRefreshResult>("/api/media/runtime/refresh-tmdb", {
+        method: "POST",
+        body: JSON.stringify({ limit: 1000 }),
+      });
+      await onSaved();
+      setStatus(result.message);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : "TMDb-Laufzeiten konnten nicht aktualisiert werden.");
+    } finally {
+      setRefreshingTmdb(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
       <section className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
@@ -386,9 +420,20 @@ function RuntimeAdjustmentDialog({
               {stats.estimatedEvents} Einträge nutzen aktuell Schätzwerte: {stats.estimatedMovies} Filme, {stats.estimatedSeries} Serien, {stats.estimatedEpisodes} Episoden.
             </p>
           </div>
-          <button type="button" className="rounded-md p-2 text-slate-300 hover:bg-slate-800" onClick={onClose} aria-label="Schließen">
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-3 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-60 hover:bg-slate-700"
+              disabled={refreshingTmdb || stats.estimatedEvents === 0}
+              onClick={() => void refreshFromTmdb()}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshingTmdb ? "animate-spin" : ""}`} aria-hidden="true" />
+              TMDb aktualisieren
+            </button>
+            <button type="button" className="rounded-md p-2 text-slate-300 hover:bg-slate-800" onClick={onClose} aria-label="Schließen">
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <div className="max-h-[62vh] overflow-y-auto p-4">

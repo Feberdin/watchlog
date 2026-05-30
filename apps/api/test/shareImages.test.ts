@@ -32,7 +32,7 @@ describe("share recap summaries", () => {
           type: "movie",
           year: 2026,
           genres: ["Action", "Komödie"],
-          posterUrl: null,
+          posterUrl: "https://image.tmdb.org/t/p/w342/action.jpg",
           runtimeSeconds: 6000,
           parent: null,
         },
@@ -56,7 +56,8 @@ describe("share recap summaries", () => {
             title: "Quiet Drama",
             year: 2025,
             genres: ["Drama"],
-            posterUrl: null,
+            runtimeSeconds: null,
+            posterUrl: "https://image.tmdb.org/t/p/w342/drama.jpg",
           },
         },
       },
@@ -72,5 +73,32 @@ describe("share recap summaries", () => {
     expect(drama.summary.series).toBe(1);
     expect(drama.summary.estimatedEvents).toBe(1);
     expect(drama.items.map((item) => item.title)).toEqual(["Quiet Drama"]);
+  });
+
+  it("keeps titles without renderable posters out of the collage grid", async () => {
+    const rows = [{
+      mediaId: "movie-1",
+      watchedAt: new Date("2026-01-10T20:00:00.000Z"),
+      createdAt: new Date("2026-01-10T20:00:00.000Z"),
+      durationSeconds: null,
+      media: {
+        id: "movie-1",
+        title: "Local Poster Only",
+        originalTitle: null,
+        type: "movie",
+        year: 2026,
+        genres: ["Drama"],
+        posterUrl: "http://jellyfin.local/items/movie-1/Images/Primary",
+        runtimeSeconds: 6000,
+        parent: null,
+      },
+    }];
+
+    const recap = await buildShareRecap(fakePrisma(rows), "user-1", { year: 2026 });
+
+    expect(recap.summary.totalTitles).toBe(1);
+    expect(recap.summary.posterCount).toBe(0);
+    expect(recap.summary.posterlessCount).toBe(1);
+    expect(recap.items).toEqual([]);
   });
 });

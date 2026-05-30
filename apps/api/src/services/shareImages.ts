@@ -1,8 +1,8 @@
 /**
  * Purpose: Build social-media-ready PNG recap images from watched movies and series.
  * Input/Output: Prisma watch history rows become a 1080x1350 PNG plus JSON summary metrics.
- * Invariants: Only the current user's watch events are used; missing posters degrade to text placeholders.
- * Debugging: If a tile is blank, inspect poster cache errors and the returned `posterCount` in the summary.
+ * Invariants: Only the current user's watch events are used; poster tiles only use cacheable images.
+ * Debugging: If a tile is missing, inspect `posterlessCount` and whether TMDb poster URLs are present.
  */
 
 import type { PrismaClient } from "@prisma/client";
@@ -25,6 +25,7 @@ type ShareMedia = {
     title: string;
     year: number | null;
     genres: string[];
+    runtimeSeconds: number | null;
     posterUrl: string | null;
   } | null;
 };
@@ -50,6 +51,8 @@ export type ShareRecapSummary = {
   estimatedMovies: number;
   estimatedSeries: number;
   posterCount: number;
+  totalTitles: number;
+  posterlessCount: number;
 };
 
 type SharePosterItem = {
@@ -66,8 +69,9 @@ const IMAGE_HEIGHT = 1350;
 const IMAGE_PADDING = 54;
 const HEADER_HEIGHT = 190;
 const FOOTER_HEIGHT = 70;
-const TILE_GAP = 8;
-const MAX_VISIBLE_POSTERS = 240;
+const TILE_GAP = 5;
+const MAX_VISIBLE_POSTERS = 180;
+const SVG_FONT = "DejaVu Sans, Liberation Sans, Arial, sans-serif";
 
 function escapeXml(value: string) {
   return value
@@ -115,6 +119,10 @@ function posterItemFor(event: ShareWatchEvent): SharePosterItem {
   };
 }
 
+function canRenderPoster(item: SharePosterItem) {
+  return isCacheablePosterUrl(item.posterUrl) || isCustomPosterRef(item.posterUrl);
+}
+
 /**
  * Why this exists: Dashboard and annual recap images need repeatable, compact
  * counts. The function keeps watchtime estimation aligned with the Timeline.
@@ -160,7 +168,7 @@ export async function buildShareRecap(
     const runtime = resolveRuntimeSeconds({
       type: event.media.type,
       durationSeconds: event.durationSeconds,
-      runtimeSeconds: event.media.runtimeSeconds,
+      runtimeSeconds: event.media.runtimeSeconds ?? (event.media.type === "episode" ? event.media.parent?.runtimeSeconds ?? null : null),
     });
     watchtimeSeconds += runtime.seconds;
 
@@ -183,7 +191,8 @@ export async function buildShareRecap(
     }
   }
 
-  const items = [...posterItems.values()].sort((left, right) => right.sortDate.getTime() - left.sortDate.getTime());
+  const allItems = [...posterItems.values()].sort((left, right) => right.sortDate.getTime() - left.sortDate.getTime());
+  const items = allItems.filter(canRenderPoster);
   const genreSuffix = genre ? `: ${genre}` : "";
   const title = options.year ? `Mein Filmjahr ${options.year}${genreSuffix}` : `Meine WatchLog-Kollage${genreSuffix}`;
   const subtitle = `${movieIds.size} Filme · ${seriesIds.size} Serien · ${episodes} Episoden · ${formatHours(watchtimeSeconds)}`;
@@ -202,6 +211,8 @@ export async function buildShareRecap(
       estimatedMovies: estimatedMovieIds.size,
       estimatedSeries: estimatedSeriesIds.size,
       posterCount: items.length,
+      totalTitles: allItems.length,
+      posterlessCount: allItems.length - items.length,
     },
     items,
   };
@@ -230,24 +241,28 @@ function headerSvg(summary: ShareRecapSummary) {
   const estimated = summary.estimatedEvents > 0
     ? `inkl. ${summary.estimatedEvents} geschätzte Laufzeiten`
     : "alle Laufzeiten direkt hinterlegt";
+  const posterNote = summary.posterlessCount > 0
+    ? `${summary.posterCount} Poster im Bild · ${summary.posterlessCount} ohne Poster ausgeblendet`
+    : `${summary.posterCount} Poster im Bild`;
 
   return Buffer.from(`
     <svg width="${IMAGE_WIDTH}" height="${HEADER_HEIGHT}" viewBox="0 0 ${IMAGE_WIDTH} ${HEADER_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
       <rect width="${IMAGE_WIDTH}" height="${HEADER_HEIGHT}" fill="#0f172a"/>
-      <text x="${IMAGE_PADDING}" y="76" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="800">${escapeXml(summary.title)}</text>
-      <text x="${IMAGE_PADDING}" y="124" fill="#99f6e4" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700">${escapeXml(summary.subtitle)}</text>
-      <text x="${IMAGE_PADDING}" y="160" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="22">${escapeXml(estimated)}</text>
+      <text x="${IMAGE_PADDING}" y="66" fill="#f8fafc" font-family="${SVG_FONT}" font-size="48" font-weight="800">${escapeXml(summary.title)}</text>
+      <text x="${IMAGE_PADDING}" y="113" fill="#99f6e4" font-family="${SVG_FONT}" font-size="27" font-weight="700">${escapeXml(summary.subtitle)}</text>
+      <text x="${IMAGE_PADDING}" y="149" fill="#94a3b8" font-family="${SVG_FONT}" font-size="21">${escapeXml(estimated)}</text>
+      <text x="${IMAGE_PADDING}" y="177" fill="#64748b" font-family="${SVG_FONT}" font-size="17">${escapeXml(posterNote)}</text>
     </svg>
   `);
 }
 
 function footerSvg(visibleCount: number, totalCount: number) {
-  const extra = totalCount > visibleCount ? ` · +${totalCount - visibleCount} weitere Titel` : "";
+  const extra = totalCount > visibleCount ? ` · +${totalCount - visibleCount} weitere Poster` : "";
   return Buffer.from(`
     <svg width="${IMAGE_WIDTH}" height="${FOOTER_HEIGHT}" viewBox="0 0 ${IMAGE_WIDTH} ${FOOTER_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
       <rect width="${IMAGE_WIDTH}" height="${FOOTER_HEIGHT}" fill="#0f172a"/>
-      <text x="${IMAGE_PADDING}" y="42" fill="#cbd5e1" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">WatchLog${escapeXml(extra)}</text>
-      <text x="${IMAGE_WIDTH - IMAGE_PADDING}" y="42" text-anchor="end" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="18">share.watchlog</text>
+      <text x="${IMAGE_PADDING}" y="42" fill="#cbd5e1" font-family="${SVG_FONT}" font-size="22" font-weight="700">WatchLog${escapeXml(extra)}</text>
+      <text x="${IMAGE_WIDTH - IMAGE_PADDING}" y="42" text-anchor="end" fill="#64748b" font-family="${SVG_FONT}" font-size="18">share.watchlog</text>
     </svg>
   `);
 }
@@ -260,9 +275,9 @@ function placeholderSvg(item: SharePosterItem, width: number, height: number) {
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <rect width="${width}" height="${height}" fill="#1e293b"/>
       <rect x="0" y="0" width="${width}" height="${height}" fill="none" stroke="#334155" stroke-width="2"/>
-      <text x="${width / 2}" y="${Math.max(42, height / 2 - 18)}" text-anchor="middle" fill="#99f6e4" font-family="Inter, Arial, sans-serif" font-size="${Math.max(24, Math.min(44, width / 3))}" font-weight="800">${escapeXml(item.type === "movie" ? "FILM" : "SERIE")}</text>
-      <text x="${width / 2}" y="${height - 52}" text-anchor="middle" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="${Math.max(12, Math.min(22, width / 8))}" font-weight="700">${escapeXml(title)}</text>
-      <text x="${width / 2}" y="${height - 24}" text-anchor="middle" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="${Math.max(10, Math.min(18, width / 10))}">${escapeXml(year)}</text>
+      <text x="${width / 2}" y="${Math.max(42, height / 2 - 18)}" text-anchor="middle" fill="#99f6e4" font-family="${SVG_FONT}" font-size="${Math.max(24, Math.min(44, width / 3))}" font-weight="800">${escapeXml(item.type === "movie" ? "FILM" : "SERIE")}</text>
+      <text x="${width / 2}" y="${height - 52}" text-anchor="middle" fill="#f8fafc" font-family="${SVG_FONT}" font-size="${Math.max(12, Math.min(22, width / 8))}" font-weight="700">${escapeXml(title)}</text>
+      <text x="${width / 2}" y="${height - 24}" text-anchor="middle" fill="#94a3b8" font-family="${SVG_FONT}" font-size="${Math.max(10, Math.min(18, width / 10))}">${escapeXml(year)}</text>
     </svg>
   `);
 }
@@ -313,11 +328,15 @@ export async function renderShareImage(
       top: startY,
     });
   } else {
+    const usedColumns = Math.min(grid.columns, visibleItems.length);
+    const usedGridWidth = usedColumns * grid.tileWidth + TILE_GAP * (usedColumns - 1);
+    const gridLeft = Math.round((IMAGE_WIDTH - usedGridWidth) / 2);
+
     for (let index = 0; index < visibleItems.length; index += 1) {
       const item = visibleItems[index]!;
       const column = index % grid.columns;
       const row = Math.floor(index / grid.columns);
-      const left = IMAGE_PADDING + column * (grid.tileWidth + TILE_GAP);
+      const left = gridLeft + column * (grid.tileWidth + TILE_GAP);
       const top = startY + row * (grid.tileHeight + TILE_GAP);
       composites.push({
         input: await posterBuffer(item, grid.tileWidth, grid.tileHeight),

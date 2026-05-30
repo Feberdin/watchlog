@@ -23,7 +23,7 @@ type WatchEventStatsRow = {
     year: number | null;
     runtimeSeconds: number | null;
     seasonNumber: number | null;
-    parent: { id: string; title: string } | null;
+    parent: { id: string; title: string; runtimeSeconds: number | null } | null;
     originalTitle: string | null;
   };
 };
@@ -59,7 +59,7 @@ function secondsFor(row: WatchEventStatsRow) {
   return resolveRuntimeSeconds({
     type: row.media.type,
     durationSeconds: row.durationSeconds,
-    runtimeSeconds: row.media.runtimeSeconds,
+    runtimeSeconds: row.media.runtimeSeconds ?? (row.media.type === "episode" ? row.media.parent?.runtimeSeconds ?? null : null),
   }).seconds;
 }
 
@@ -77,7 +77,7 @@ function buildRuntimeStats(rows: WatchEventStatsRow[]) {
     const runtime = resolveRuntimeSeconds({
       type: row.media.type,
       durationSeconds: row.durationSeconds,
-      runtimeSeconds: row.media.runtimeSeconds,
+      runtimeSeconds: row.media.runtimeSeconds ?? (row.media.type === "episode" ? row.media.parent?.runtimeSeconds ?? null : null),
     });
 
     if (!runtime.estimated) {

@@ -6,9 +6,10 @@
  */
 
 import type { FastifyPluginAsync } from "fastify";
-import { manualMediaSchema, mediaRuntimeUpdateSchema } from "@watchlog/shared";
+import { manualMediaSchema, mediaRuntimeUpdateSchema, tmdbRuntimeRefreshSchema } from "@watchlog/shared";
 import { getSetting } from "../services/settings.js";
 import { getTmdbDetails, type TmdbSettingsForClient } from "../services/tmdbClient.js";
+import { refreshEstimatedRuntimesFromTmdb } from "../services/runtimeRefresh.js";
 import {
   customPosterRef,
   deleteCustomPoster,
@@ -112,6 +113,20 @@ export const mediaRoutes: FastifyPluginAsync = async (app) => {
     });
     reply.code(201);
     return mediaResponse(media);
+  });
+
+  app.post("/media/runtime/refresh-tmdb", async (request) => {
+    const user = request.requireUser();
+    const input = tmdbRuntimeRefreshSchema.parse(request.body ?? {});
+    const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
+
+    return refreshEstimatedRuntimesFromTmdb(app.prisma, user.id, settings as TmdbSettingsForClient, input).catch((error) => {
+      const message = error instanceof Error ? error.message : "TMDb-Laufzeiten konnten nicht aktualisiert werden.";
+      if (message.startsWith("TMDb:")) {
+        throw app.httpErrors.badRequest(message);
+      }
+      throw error;
+    });
   });
 
   app.patch("/media/:id/runtime", async (request) => {
