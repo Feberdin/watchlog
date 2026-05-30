@@ -43,7 +43,6 @@ services:
     environment:
       APP_URL: ${APP_URL:-http://localhost:8111}
       APP_PORT: 8111
-      APP_COMMIT: ${APP_COMMIT:-unknown}
       TZ: ${TZ:-Europe/Berlin}
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}

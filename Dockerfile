@@ -28,8 +28,6 @@ RUN mkdir -p apps/api/web && cp -R apps/web/dist/* apps/api/web/
 
 FROM base AS runtime
 ENV NODE_ENV=production
-ARG APP_COMMIT=unknown
-ENV APP_COMMIT=$APP_COMMIT
 WORKDIR /app
 COPY --from=build /app/package.json /app/package.json
 COPY --from=build /app/node_modules /app/node_modules

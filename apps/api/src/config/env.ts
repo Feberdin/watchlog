@@ -9,6 +9,19 @@ import { z } from "zod";
 import { BUILD_COMMIT } from "../generated/buildInfo.js";
 
 // Why this exists:
+// Docker images and Compose files may pass APP_COMMIT="unknown" as a harmless
+// placeholder. Treating that as a real value hides the build metadata that was
+// generated during the Docker build, which makes broker log correlation harder.
+export function normalizeAppCommit(value: string | undefined, fallback = BUILD_COMMIT): string {
+  const commit = value?.trim();
+  if (!commit || commit === "unknown") {
+    return fallback;
+  }
+
+  return commit;
+}
+
+// Why this exists:
 // Docker Compose injects every environment value as a string. `z.coerce.boolean()`
 // treats any non-empty string, including "false", as true because it follows
 // JavaScript's Boolean() rules. For security flags that would silently enable
@@ -37,9 +50,11 @@ const booleanFromEnv = z
     throw new Error(`Boolean-Wert '${value}' ist ungueltig. Erlaubt sind true/false, 1/0, yes/no oder on/off.`);
   });
 
+const appCommitFromEnv = z.string().optional().transform((value) => normalizeAppCommit(value));
+
 const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
-  APP_COMMIT: z.string().min(1).default(BUILD_COMMIT),
+  APP_COMMIT: appCommitFromEnv,
   APP_URL: z.string().url().default("http://localhost:8111"),
   APP_PORT: z.coerce.number().int().min(1).max(65535).default(8111),
   DATABASE_URL: z.string().min(1),

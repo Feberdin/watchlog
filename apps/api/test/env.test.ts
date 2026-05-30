@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadEnv } from "../src/config/env.js";
+import { loadEnv, normalizeAppCommit } from "../src/config/env.js";
 
 function baseEnv(overrides: Record<string, string | undefined> = {}) {
   return {
@@ -49,5 +49,10 @@ describe("loadEnv", () => {
     const env = loadEnv(baseEnv({ APP_COMMIT: "abc123" }));
 
     expect(env.APP_COMMIT).toBe("abc123");
+  });
+
+  it("falls back to build metadata when runtime commit is only a placeholder", () => {
+    expect(normalizeAppCommit("unknown", "build-commit")).toBe("build-commit");
+    expect(normalizeAppCommit("  ", "build-commit")).toBe("build-commit");
   });
 });
