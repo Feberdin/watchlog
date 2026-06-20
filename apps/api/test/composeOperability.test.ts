@@ -25,9 +25,22 @@ type ComposeService = {
   };
 };
 
+type ComposeNetwork = {
+  driver?: string;
+  ipam?: {
+    config?: Array<{
+      subnet?: string;
+      gateway?: string;
+    }>;
+  };
+};
+
 function loadCompose(fileName: string) {
   const filePath = resolve(process.cwd(), "../../", fileName);
-  return parse(readFileSync(filePath, "utf8")) as { services: Record<string, ComposeService> };
+  return parse(readFileSync(filePath, "utf8")) as {
+    services: Record<string, ComposeService>;
+    networks?: Record<string, ComposeNetwork>;
+  };
 }
 
 describe("Compose operability settings", () => {
@@ -50,4 +63,20 @@ describe("Compose operability settings", () => {
       expect(JSON.stringify(compose.services.watchlog?.healthcheck)).toContain("/readyz");
     });
   }
+
+  it("docker-compose.broker.yml pins the Docker bridge subnet to the allowed broker pool", () => {
+    const compose = loadCompose("docker-compose.broker.yml");
+
+    expect(compose.networks?.default).toMatchObject({
+      driver: "bridge",
+      ipam: {
+        config: [
+          {
+            subnet: "10.200.1.0/24",
+            gateway: "10.200.1.1",
+          },
+        ],
+      },
+    });
+  });
 });

@@ -71,3 +71,11 @@ volumes:
   watchlog-db:
   watchlog-config:
   watchlog-cache:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.200.1.0/24
+          gateway: 10.200.1.1
