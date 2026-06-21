@@ -26,16 +26,19 @@ What happens here: Use these values for the WatchLog dashboard tile or as the ex
 | Web container | `watchlog` |
 | Internal database | `watchlog-db`, do not add to Heimdall |
 
+The Broker auto-sync derives names from container names and may create the tile as `Watchlog`. Use `WatchLog` as the preferred human-readable display name when a custom label is supported.
+
 ## Broker Sync Expectation
 
 Why this exists: The Heimdall sync should be predictable and avoid noisy or unsafe dashboard entries.
 
-What happens here: The Broker should detect only the public WatchLog web port as a Heimdall candidate.
+What happens here: In the global Docker preview the Broker may detect many web containers. For the WatchLog stack, only the public WatchLog web port is relevant.
 
 - Include `watchlog`, because it publishes `0.0.0.0:8111->8111/tcp` and is a user-facing web app.
 - Skip `watchlog-db`, because PostgreSQL only exposes `5432/tcp` inside the stack and is not a browser UI.
 - Prefer `http://192.168.57.10:8111` unless the stack is later placed behind a reverse proxy with HTTPS.
 - Keep manual Heimdall entries untouched unless the Broker plan explicitly marks them as Broker-managed.
+- Expect a full Broker sync to include other web containers too. Review the plan for unrelated create/update actions before applying.
 
 ## Safe Sync Workflow
 
@@ -74,7 +77,7 @@ What happens here: The data comes from the Unraid Deployment Broker Docker view 
 - Stack source: `watchlog`
 - Git source: `Feberdin/watchlog`
 - Compose file: `docker-compose.broker.yml`
-- Deployed commit: `46d193bc1b5e1c16ba78d050a053cf3d82c19775`
+- Current commit: check with the Broker `stack_source_status` tool before changing Heimdall
 - Web container: `watchlog`, status `healthy`
 - Web image: `watchlog-watchlog`
 - Web port: `8111`
