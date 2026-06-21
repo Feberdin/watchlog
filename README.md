@@ -101,6 +101,8 @@ Create the first admin user. After the first admin exists, registration is close
 
 Most users should start with `docker-compose.yml`.
 
+Heimdall dashboard values for the Unraid/Broker setup are documented in [docs/heimdall.md](docs/heimdall.md).
+
 ## Configuration
 
 | Variable | Required | Example | Notes |
