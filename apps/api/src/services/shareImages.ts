@@ -19,12 +19,14 @@ type ShareMedia = {
   year: number | null;
   genres: string[];
   posterUrl: string | null;
+  tmdbId: string | null;
   runtimeSeconds: number | null;
   parent: {
     id: string;
     title: string;
     year: number | null;
     genres: string[];
+    tmdbId: string | null;
     runtimeSeconds: number | null;
     posterUrl: string | null;
   } | null;
@@ -107,9 +109,10 @@ function posterItemFor(event: ShareWatchEvent): SharePosterItem {
   const posterMedia = posterMediaFor(event);
   const isMovie = event.media.type === "movie";
   const title = isMovie ? event.media.title : posterMedia.title;
+  const seriesKey = posterMedia.tmdbId ? `series:tmdb:${posterMedia.tmdbId}` : `series:${posterMedia.id}`;
 
   return {
-    key: `${isMovie ? "movie" : "series"}:${posterMedia.id}`,
+    key: isMovie ? `movie:${posterMedia.id}` : seriesKey,
     title,
     type: isMovie ? "movie" : "series",
     year: posterMedia.year,
@@ -175,7 +178,11 @@ export async function buildShareRecap(
       movieIds.add(event.media.id);
       if (runtime.estimated) estimatedMovieIds.add(event.media.id);
     } else {
-      const seriesId = event.media.parent?.id ?? event.media.id;
+      const seriesId = event.media.parent?.tmdbId
+        ? `tmdb:${event.media.parent.tmdbId}`
+        : event.media.tmdbId
+          ? `tmdb:${event.media.tmdbId}`
+          : event.media.parent?.id ?? event.media.id;
       seriesIds.add(seriesId);
       if (runtime.estimated) estimatedSeriesIds.add(seriesId);
       if (event.media.type === "episode") episodes += 1;

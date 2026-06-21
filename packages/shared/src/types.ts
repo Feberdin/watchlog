@@ -93,6 +93,14 @@ export type TmdbSearchResult = {
   backdropUrl: string | null;
 };
 
+export type TmdbSeasonOption = {
+  seasonNumber: number;
+  name: string | null;
+  startYear: number | null;
+  episodeCount: number | null;
+  posterUrl: string | null;
+};
+
 export type JellyfinWatchedImportResult = {
   ok: true;
   source: "jellyfin";

@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { manualWatchEventSchema } from "@watchlog/shared";
 import { createManualWatchEvent } from "../src/services/watchEvents.js";
 
 describe("createManualWatchEvent", () => {
@@ -39,5 +40,22 @@ describe("createManualWatchEvent", () => {
     expect(result.rewatchIndex).toBe(1);
     expect(createdWatchEvents).toHaveLength(1);
     expect((createdWatchEvents[0] as { watchedAt: Date }).watchedAt.toISOString()).toBe("2010-01-01T00:00:00.000Z");
+  });
+
+  it("accepts positive manual season numbers for show imports", () => {
+    const parsed = manualWatchEventSchema.parse({
+      mediaId: "ckq9v9r6a0000abcd1234efgh",
+      datePrecision: "year",
+      watchedAt: "2024",
+      seasonNumbers: [1, 2],
+    });
+
+    expect(parsed.seasonNumbers).toEqual([1, 2]);
+    expect(() => manualWatchEventSchema.parse({
+      mediaId: "ckq9v9r6a0000abcd1234efgh",
+      datePrecision: "year",
+      watchedAt: "2024",
+      seasonNumbers: [0],
+    })).toThrow();
   });
 });

@@ -62,6 +62,7 @@ export const manualMediaSchema = z.object({
 export const manualWatchEventSchema = z.object({
   mediaId: z.string().cuid().optional(),
   media: manualMediaSchema.optional(),
+  seasonNumbers: z.array(z.number().int().min(1).max(1000)).max(100).optional(),
   watchedAt: z.preprocess(emptyStringToNull, z.string().trim().min(1).nullable().optional()),
   datePrecision: datePrecisionSchema,
   note: nullableTrimmedString,

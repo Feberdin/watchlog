@@ -9,7 +9,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { manualWatchEventSchema } from "@watchlog/shared";
 import { getSetting } from "../services/settings.js";
 import { createManualWatchEvent } from "../services/watchEvents.js";
-import { refreshTmdbSeriesCatalog } from "../services/tmdbSeriesCatalog.js";
+import { materializeManualShowWatchEvent } from "../services/manualSeriesWatch.js";
 import type { TmdbSettingsForClient } from "../services/tmdbClient.js";
 import { resolveRuntimeSeconds } from "../services/watchtime.js";
 
@@ -449,8 +449,13 @@ export const watchEventRoutes: FastifyPluginAsync = async (app) => {
     if (media?.type === "show") {
       const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
       if ((settings as TmdbSettingsForClient).tmdbBearerToken) {
-        await refreshTmdbSeriesCatalog(app.prisma, settings as TmdbSettingsForClient, media).catch((error) => {
-          request.log.warn({ error, mediaId: media.id }, "TMDb-Serienkatalog fuer manuellen Eintrag konnte nicht aktualisiert werden.");
+        await materializeManualShowWatchEvent(
+          app.prisma,
+          settings as TmdbSettingsForClient,
+          event.id,
+          input.seasonNumbers ? { seasonNumbers: input.seasonNumbers } : {},
+        ).catch((error) => {
+          request.log.warn({ error, mediaId: media.id, event: "manual_series_materialize_failed" }, "Manueller Serien-Eintrag konnte nicht in Staffeln aufgeteilt werden.");
         });
       }
     }

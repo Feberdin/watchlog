@@ -27,6 +27,35 @@ type CollageItem = {
   posterUrl: string | null;
 };
 
+type CollageMovieEvent = {
+  mediaId: string;
+  watchedAt: Date | null;
+  createdAt: Date;
+  media: { id: string; title: string; type: string; year: number | null; genres: string[]; cast: string[]; posterUrl: string | null };
+};
+
+type CollageShowEvent = {
+  mediaId: string;
+  watchedAt: Date | null;
+  createdAt: Date;
+  media: { id: string; title: string; type: string; year: number | null; genres: string[]; cast: string[]; posterUrl: string | null; tmdbId: string | null };
+};
+
+type CollageShow = {
+  id: string;
+  tmdbId: string | null;
+  title: string;
+  year: number | null;
+  genres: string[];
+  cast: string[];
+  posterUrl: string | null;
+  children: Array<{
+    seasonNumber: number | null;
+    year: number | null;
+    watchEvents: Array<{ watchedAt: Date | null; createdAt: Date }>;
+  }>;
+};
+
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get("/dashboard", async (request) => {
     const user = request.requireUser();
@@ -149,32 +178,14 @@ function buildShareGenres(events: Array<{ media: { genres: string[]; parent?: { 
   return [...byName.values()].sort((left, right) => left.localeCompare(right, "de"));
 }
 
-function buildDashboardCollage(
-  movieEvents: Array<{
-    mediaId: string;
-    watchedAt: Date | null;
-    createdAt: Date;
-    media: { id: string; title: string; type: string; year: number | null; genres: string[]; cast: string[]; posterUrl: string | null };
-  }>,
-  showEvents: Array<{
-    mediaId: string;
-    watchedAt: Date | null;
-    createdAt: Date;
-    media: { id: string; title: string; type: string; year: number | null; genres: string[]; cast: string[]; posterUrl: string | null };
-  }>,
-  shows: Array<{
-    id: string;
-    title: string;
-    year: number | null;
-    genres: string[];
-    cast: string[];
-    posterUrl: string | null;
-    children: Array<{
-      seasonNumber: number | null;
-      year: number | null;
-      watchEvents: Array<{ watchedAt: Date | null; createdAt: Date }>;
-    }>;
-  }>,
+function showMergeKeys(show: { id: string; tmdbId?: string | null }) {
+  return [`id:${show.id}`, show.tmdbId ? `tmdb:${show.tmdbId}` : null].filter((key): key is string => Boolean(key));
+}
+
+export function buildDashboardCollage(
+  movieEvents: CollageMovieEvent[],
+  showEvents: CollageShowEvent[],
+  shows: CollageShow[],
 ): CollageItem[] {
   const movies: CollageItem[] = Array.from(new Map(movieEvents.map((event) => [event.mediaId, event])).values()).map((event) => ({
     id: event.media.id,
@@ -189,22 +200,16 @@ function buildDashboardCollage(
     posterUrl: posterUrlForMedia(event.media),
   }));
 
-  const watchedShows: CollageItem[] = Array.from(new Map(showEvents.map((event) => [event.mediaId, event])).values()).map((event) => ({
-    id: event.media.id,
-    title: event.media.title,
-    type: "show",
-    year: event.media.year,
-    genres: event.media.genres,
-    cast: event.media.cast,
-    seasonNumber: null,
-    watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
-    addedAt: event.createdAt.toISOString(),
-    posterUrl: posterUrlForMedia(event.media),
-  }));
+  const showsRepresentedByEpisodes = new Set<string>();
 
   const completedSeasons = shows.flatMap((show) => {
     const episodesBySeason = new Map<number, typeof show.children>();
     for (const episode of show.children) {
+      if (episode.watchEvents.length > 0) {
+        for (const key of showMergeKeys(show)) {
+          showsRepresentedByEpisodes.add(key);
+        }
+      }
       if (episode.seasonNumber === null || episode.seasonNumber === 0) continue;
       const seasonEpisodes = episodesBySeason.get(episode.seasonNumber) ?? [];
       seasonEpisodes.push(episode);
@@ -243,6 +248,21 @@ function buildDashboardCollage(
     }
     return seasons;
   });
+
+  const watchedShows: CollageItem[] = Array.from(new Map(showEvents.map((event) => [event.mediaId, event])).values())
+    .filter((event) => showMergeKeys(event.media).every((key) => !showsRepresentedByEpisodes.has(key)))
+    .map((event) => ({
+      id: event.media.id,
+      title: event.media.title,
+      type: "show",
+      year: event.media.year,
+      genres: event.media.genres,
+      cast: event.media.cast,
+      seasonNumber: null,
+      watchedAt: (event.watchedAt ?? event.createdAt).toISOString(),
+      addedAt: event.createdAt.toISOString(),
+      posterUrl: posterUrlForMedia(event.media),
+    }));
 
   return [...movies, ...watchedShows, ...completedSeasons]
     .sort((left, right) => Date.parse(right.addedAt) - Date.parse(left.addedAt));

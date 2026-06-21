@@ -9,7 +9,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { Media } from "@prisma/client";
 import { tmdbBulkJellyseerrRequestSchema, tmdbImportSchema, tmdbSearchSchema } from "@watchlog/shared";
 import { getSetting } from "../services/settings.js";
-import { getTmdbDetails, searchTmdb, type TmdbSettingsForClient } from "../services/tmdbClient.js";
+import { getTmdbDetails, getTmdbTvCatalog, searchTmdb, type TmdbSettingsForClient } from "../services/tmdbClient.js";
 import { requestMediaInJellyseerr } from "../services/swipe.js";
 
 const tmdbDefaults = {
@@ -65,6 +65,36 @@ export const metadataRoutes: FastifyPluginAsync = async (app) => {
     const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
 
     return searchTmdb(settings as TmdbSettingsForClient, query.query, query.type, query.year, { includeCast: true });
+  });
+
+  app.get("/metadata/tmdb/show/:tmdbId/seasons", async (request) => {
+    request.requireUser();
+    const { tmdbId: rawTmdbId } = request.params as { tmdbId: string };
+    const tmdbId = Number(rawTmdbId);
+
+    if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+      throw app.httpErrors.badRequest("TMDb-ID der Serie ist ungueltig.");
+    }
+
+    const settings = await getSetting(app.prisma, "tmdb", tmdbDefaults);
+    const catalog = await getTmdbTvCatalog(settings as TmdbSettingsForClient, tmdbId);
+    const now = Date.now();
+
+    return catalog.seasons
+      .filter((season) => {
+        if (season.seasonNumber <= 0) return false;
+        if (!season.airDate) return true;
+        const airDate = Date.parse(`${season.airDate}T00:00:00.000Z`);
+        return Number.isNaN(airDate) || airDate <= now;
+      })
+      .map((season) => ({
+        seasonNumber: season.seasonNumber,
+        name: season.name,
+        startYear: season.startYear,
+        episodeCount: season.episodeCount,
+        posterUrl: season.posterUrl,
+      }))
+      .sort((left, right) => left.seasonNumber - right.seasonNumber);
   });
 
   app.post("/metadata/tmdb/import", async (request, reply) => {

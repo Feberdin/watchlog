@@ -5,9 +5,9 @@
  * Debugging: Search/import/save/delete errors are shown inline; browser Network tab shows the exact API step.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Download, RefreshCw, Search, Trash2, Upload } from "lucide-react";
-import type { TmdbJellyseerrBulkRequestResult, TmdbSearchResult } from "@watchlog/shared";
+import type { TmdbJellyseerrBulkRequestResult, TmdbSearchResult, TmdbSeasonOption } from "@watchlog/shared";
 import { apiRequest } from "../api/client";
 import { PosterPreview } from "../components/PosterPreview";
 import { castLabel, genreLabel, metadataLabel } from "../utils/mediaMetadata";
@@ -79,10 +79,14 @@ export function ManualAddPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  const [seasonLoading, setSeasonLoading] = useState(false);
+  const [seasonOptions, setSeasonOptions] = useState<TmdbSeasonOption[]>([]);
+  const [selectedSeasonNumbers, setSelectedSeasonNumbers] = useState<Set<number>>(new Set());
   const [media, setMedia] = useState<MediaRecord[]>([]);
   const [missingPosters, setMissingPosters] = useState<MediaRecord[]>([]);
   const [posterBusyId, setPosterBusyId] = useState<string | null>(null);
   const [deleteQuery, setDeleteQuery] = useState("");
+  const seasonRequestId = useRef(0);
 
   const deletableMedia = useMemo(
     () => media.filter(canDeleteMedia).sort((left, right) => left.title.localeCompare(right.title, "de")),
@@ -129,6 +133,8 @@ export function ManualAddPage() {
     setLoading(true);
     setStatus(null);
     setSelected(null);
+    setSeasonOptions([]);
+    setSelectedSeasonNumbers(new Set());
     try {
       const params = new URLSearchParams({ query: trimmed, type });
       if (year.trim()) {
@@ -150,6 +156,39 @@ export function ManualAddPage() {
     if (datePrecision === "year" && !watchedAt.trim() && result.year) {
       setWatchedAt(String(result.year));
     }
+    void loadSeasonsForResult(result);
+  }
+
+  async function loadSeasonsForResult(result: TmdbSearchResult) {
+    seasonRequestId.current += 1;
+    const requestId = seasonRequestId.current;
+    setSeasonOptions([]);
+    setSelectedSeasonNumbers(new Set());
+    if (result.type !== "show") {
+      return;
+    }
+
+    setSeasonLoading(true);
+    try {
+      const seasons = await apiRequest<TmdbSeasonOption[]>(`/api/metadata/tmdb/show/${result.tmdbId}/seasons`);
+      if (seasonRequestId.current !== requestId) {
+        return;
+      }
+      setSeasonOptions(seasons);
+      setSelectedSeasonNumbers(new Set(seasons.map((season) => season.seasonNumber)));
+      if (seasons.length === 0) {
+        setStatus("TMDb liefert fuer diese Serie keine aktuellen Staffeln.");
+      }
+    } catch (caught) {
+      if (seasonRequestId.current !== requestId) {
+        return;
+      }
+      setStatus(caught instanceof Error ? caught.message : "Staffeln konnten nicht von TMDb geladen werden.");
+    } finally {
+      if (seasonRequestId.current === requestId) {
+        setSeasonLoading(false);
+      }
+    }
   }
 
   function toggleResult(result: TmdbSearchResult) {
@@ -165,7 +204,19 @@ export function ManualAddPage() {
     });
   }
 
-  async function createWatchForResult(result: TmdbSearchResult) {
+  function toggleSeasonNumber(seasonNumber: number) {
+    setSelectedSeasonNumbers((existing) => {
+      const next = new Set(existing);
+      if (next.has(seasonNumber)) {
+        next.delete(seasonNumber);
+      } else {
+        next.add(seasonNumber);
+      }
+      return next;
+    });
+  }
+
+  async function createWatchForResult(result: TmdbSearchResult, seasonNumbers?: number[]) {
     const imported = await apiRequest<MediaRecord>("/api/metadata/tmdb/import", {
       method: "POST",
       body: JSON.stringify({ type: result.type, tmdbId: result.tmdbId }),
@@ -177,6 +228,7 @@ export function ManualAddPage() {
         datePrecision,
         watchedAt: defaultWatchedAtFor(result, datePrecision, watchedAt),
         note,
+        ...(result.type === "show" && seasonNumbers && seasonNumbers.length > 0 ? { seasonNumbers } : {}),
       }),
     });
     return imported;
@@ -191,12 +243,24 @@ export function ManualAddPage() {
     setSaving(true);
     setStatus(null);
     try {
-      const imported = await createWatchForResult(selected);
+      if (selected.type === "show" && seasonOptions.length > 0 && selectedSeasonNumbers.size === 0) {
+        setStatus("Bitte mindestens eine Staffel auswaehlen.");
+        return;
+      }
+
+      const imported = await createWatchForResult(
+        selected,
+        selected.type === "show" ? [...selectedSeasonNumbers] : undefined,
+      );
       setWatchedAt("");
       setNote("");
       setSelected(null);
+      setSeasonOptions([]);
+      setSelectedSeasonNumbers(new Set());
       await loadMedia();
-      setStatus(`${imported.title} wurde als gesehen gespeichert.`);
+      setStatus(selected.type === "show"
+        ? `${imported.title} wurde fuer die ausgewaehlten Staffeln als gesehen gespeichert.`
+        : `${imported.title} wurde als gesehen gespeichert.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : "Eintrag konnte nicht gespeichert werden.");
     } finally {
@@ -221,6 +285,8 @@ export function ManualAddPage() {
       setWatchedAt("");
       setNote("");
       setSelected(null);
+      setSeasonOptions([]);
+      setSelectedSeasonNumbers(new Set());
       setSelectedKeys(new Set());
       await Promise.all([loadMedia(), loadMissingPosters()]);
       setStatus(`${selectedResults.length} Titel wurden als gesehen gespeichert.`);
@@ -402,6 +468,61 @@ export function ManualAddPage() {
         ) : (
           <p className="mt-2 text-sm text-slate-400">Suche und wähle zuerst einen TMDb-Titel aus.</p>
         )}
+        {selected?.type === "show" && (
+          <div className="mt-4 rounded-md border border-slate-800 bg-slate-950 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-medium">Gesehene Staffeln</h3>
+                <p className="mt-1 text-xs text-slate-400">Ausgewählte Staffeln werden als Episoden gespeichert, damit Kollage und Watchtime korrekt bleiben.</p>
+              </div>
+              {seasonOptions.length > 0 && (
+                <div className="flex gap-2 text-xs">
+                  <button
+                    type="button"
+                    className="rounded-md bg-slate-800 px-2 py-1 hover:bg-slate-700"
+                    onClick={() => setSelectedSeasonNumbers(new Set(seasonOptions.map((season) => season.seasonNumber)))}
+                  >
+                    Alle
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md bg-slate-800 px-2 py-1 hover:bg-slate-700"
+                    onClick={() => setSelectedSeasonNumbers(new Set())}
+                  >
+                    Keine
+                  </button>
+                </div>
+              )}
+            </div>
+            {seasonLoading ? (
+              <p className="mt-3 text-sm text-slate-300">Staffeln werden geladen...</p>
+            ) : seasonOptions.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-300">Keine Staffeln geladen. Ohne Auswahl werden beim Speichern alle aktuell von TMDb gefundenen Staffeln verwendet.</p>
+            ) : (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {seasonOptions.map((season) => {
+                  const checked = selectedSeasonNumbers.has(season.seasonNumber);
+                  return (
+                    <label key={season.seasonNumber} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm">
+                      <input
+                        className="h-4 w-4 accent-teal-400"
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSeasonNumber(season.seasonNumber)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-medium">Staffel {season.seasonNumber}{season.startYear ? ` (${season.startYear})` : ""}</span>
+                        <span className="block text-xs text-slate-400">
+                          {[season.name, season.episodeCount != null ? `${season.episodeCount} Episoden` : null].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <form className="mt-4 space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
@@ -441,7 +562,7 @@ export function ManualAddPage() {
           </label>
           {status && <p className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm">{status}</p>}
           <div className="flex flex-wrap gap-2">
-            <button className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || requesting || !selected}>
+            <button className="inline-flex items-center gap-2 rounded-md bg-teal-400 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60" disabled={saving || requesting || seasonLoading || !selected}>
               <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
               {saving ? "Speichern..." : "Als gesehen speichern"}
             </button>

@@ -8,6 +8,7 @@
 import { buildApp } from "./app.js";
 import { loadEnv } from "./config/env.js";
 import { assertStartupDependencies, logConfigLoaded, logShutdown, logStartup } from "./services/operability.js";
+import { backfillManualShowWatchEvents } from "./services/manualSeriesWatch.js";
 
 const env = loadEnv();
 const app = await buildApp(env);
@@ -36,6 +37,25 @@ try {
   await assertStartupDependencies(app, env);
   await app.listen({ host: "0.0.0.0", port: env.APP_PORT });
   logStartup(app, env);
+  void backfillManualShowWatchEvents(app.prisma)
+    .then((result) => {
+      app.log.info({
+        event: "manual_series_backfill_succeeded",
+        scanned: result.scanned,
+        materialized: result.materialized,
+        createdEvents: result.createdEvents,
+        skippedEvents: result.skippedEvents,
+        deletedShowEvents: result.deletedShowEvents,
+        unresolved: result.unresolved,
+      }, "manual_series_backfill_succeeded");
+    })
+    .catch((error) => {
+      app.log.warn({
+        event: "manual_series_backfill_failed",
+        error: error instanceof Error ? { name: error.name, message: error.message } : { message: "unknown_error" },
+        nextStep: "TMDb-Integration und manuelle Serien-WatchEvents pruefen.",
+      }, "manual_series_backfill_failed");
+    });
 } catch (error) {
   app.log.error({ error }, "WatchLog konnte nicht starten.");
   process.exit(1);
