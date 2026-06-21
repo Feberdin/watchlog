@@ -97,6 +97,32 @@ function isAlreadyAired(episode: TmdbTvEpisode, now: Date) {
   return Number.isNaN(airDate) || airDate <= now.getTime();
 }
 
+/**
+ * Why this exists: long-running shows can have many seasons. Fetching every
+ * season strictly one after another makes startup repairs look stuck, while
+ * unbounded parallelism would be rude to TMDb and harder to debug.
+ */
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<U>,
+): Promise<U[]> {
+  const results = new Array<U>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index]!, index);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 function hasMeaningfulEpisodeUpdate(existing: ExistingEpisodeMedia, episode: TmdbTvEpisode, catalog: TmdbTvCatalog) {
   return !existing.year && episode.year !== null
     || !existing.overview && episode.overview !== null
@@ -156,17 +182,15 @@ async function loadRegularAiredEpisodes(
   options: { seasonCache?: TmdbSeasonEpisodeCache; now?: Date } = {},
 ): Promise<SeasonEpisodeGroup[]> {
   const now = options.now ?? new Date();
-  const groups: SeasonEpisodeGroup[] = [];
+  const regularSeasons = catalog.seasons.filter(isRegularSeason);
 
-  for (const season of catalog.seasons.filter(isRegularSeason)) {
+  return mapWithConcurrency(regularSeasons, 4, async (season) => {
     const episodes = await getCachedSeasonEpisodes(settings, catalog.tmdbId, season.seasonNumber, options.seasonCache);
-    groups.push({
+    return {
       season,
       episodes: episodes.filter((episode) => isAlreadyAired(episode, now)),
-    });
-  }
-
-  return groups;
+    };
+  });
 }
 
 async function upsertTmdbEpisodes(

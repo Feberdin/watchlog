@@ -55,6 +55,38 @@ export type ManualSeriesBackfillResult = {
   message: string;
 };
 
+export type ManualSeriesBackfillProgress =
+  | { stage: "started"; scanned: number }
+  | { stage: "event_started"; index: number; total: number; showEventId: string; showMediaId: string }
+  | {
+    stage: "event_finished";
+    index: number;
+    total: number;
+    showEventId: string;
+    showMediaId: string | null;
+    ok: boolean;
+    reason: ManualSeriesMaterializeResult["reason"];
+    createdEvents: number;
+    skippedEvents: number;
+    deletedShowEvent: boolean;
+  };
+
+type ManualSeriesBackfillOptions = {
+  limit?: number;
+  onProgress?: (progress: ManualSeriesBackfillProgress) => void | Promise<void>;
+};
+
+async function reportProgress(
+  options: ManualSeriesBackfillOptions,
+  progress: ManualSeriesBackfillProgress,
+) {
+  try {
+    await options.onProgress?.(progress);
+  } catch {
+    // Progress logging must never break the repair job itself.
+  }
+}
+
 function uniqueSeasonNumbers(values: number[] | undefined): number[] | null {
   if (!values || values.length === 0) {
     return null;
@@ -250,7 +282,10 @@ export async function materializeManualShowWatchEvent(
  * idempotent startup repair converts existing manual show rows once TMDb is
  * configured, then future starts have nothing left to change.
  */
-export async function backfillManualShowWatchEvents(prisma: PrismaClient): Promise<ManualSeriesBackfillResult> {
+export async function backfillManualShowWatchEvents(
+  prisma: PrismaClient,
+  options: ManualSeriesBackfillOptions = {},
+): Promise<ManualSeriesBackfillResult> {
   const settings = await getSetting(prisma, "tmdb", tmdbDefaults);
   if (!settings.tmdbBearerToken) {
     return {
@@ -274,8 +309,9 @@ export async function backfillManualShowWatchEvents(prisma: PrismaClient): Promi
     },
     include: { media: true },
     orderBy: [{ createdAt: "asc" }],
-    take: 500,
+    take: options.limit ?? 500,
   });
+  await reportProgress(options, { stage: "started", scanned: showEvents.length });
 
   let materialized = 0;
   let createdEvents = 0;
@@ -283,10 +319,31 @@ export async function backfillManualShowWatchEvents(prisma: PrismaClient): Promi
   let deletedShowEvents = 0;
   let unresolved = 0;
 
-  for (const event of showEvents) {
+  for (const [index, event] of showEvents.entries()) {
+    const current = index + 1;
+    await reportProgress(options, {
+      stage: "event_started",
+      index: current,
+      total: showEvents.length,
+      showEventId: event.id,
+      showMediaId: event.mediaId,
+    });
+
     const result = await materializeManualShowWatchEvent(prisma, settings, event.id);
     if (!result.ok) {
       unresolved += 1;
+      await reportProgress(options, {
+        stage: "event_finished",
+        index: current,
+        total: showEvents.length,
+        showEventId: event.id,
+        showMediaId: result.showMediaId,
+        ok: false,
+        reason: result.reason,
+        createdEvents: result.createdEvents,
+        skippedEvents: result.skippedEvents,
+        deletedShowEvent: result.deletedShowEvent,
+      });
       continue;
     }
 
@@ -296,6 +353,18 @@ export async function backfillManualShowWatchEvents(prisma: PrismaClient): Promi
     if (result.deletedShowEvent) {
       deletedShowEvents += 1;
     }
+    await reportProgress(options, {
+      stage: "event_finished",
+      index: current,
+      total: showEvents.length,
+      showEventId: event.id,
+      showMediaId: result.showMediaId,
+      ok: true,
+      reason: result.reason,
+      createdEvents: result.createdEvents,
+      skippedEvents: result.skippedEvents,
+      deletedShowEvent: result.deletedShowEvent,
+    });
   }
 
   return {
