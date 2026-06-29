@@ -9,6 +9,10 @@ x-watchlog-logging: &watchlog-logging
     max-size: "10m"
     max-file: "3"
 
+x-broker:
+  heimdall:
+    enabled: true
+
 services:
   db:
     image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
@@ -37,6 +41,10 @@ services:
     container_name: watchlog
     restart: unless-stopped
     logging: *watchlog-logging
+    labels:
+      unraid-deploy-broker.heimdall.enabled: "true"
+      unraid-deploy-broker.heimdall.probe.enabled: "true"
+      unraid-deploy-broker.heimdall.probe.path: "/api/heimdall/v1"
     depends_on:
       db:
         condition: service_healthy

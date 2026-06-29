@@ -41,6 +41,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = fp(async (app: 
       !request.url.startsWith("/api/auth/register") &&
       !request.url.startsWith("/api/health") &&
       !request.url.startsWith("/api/readyz") &&
+      !request.url.startsWith("/api/heimdall/") &&
       !request.url.startsWith("/api/webhooks/");
 
     if (!rawToken) {

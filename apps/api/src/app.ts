@@ -36,6 +36,7 @@ import { swipeRoutes } from "./routes/swipe.js";
 import { cinemaRoutes } from "./routes/cinema.js";
 import { tvMemoryRoutes } from "./routes/tvMemory.js";
 import { shareRoutes } from "./routes/share.js";
+import { heimdallRoutes } from "./routes/heimdall.js";
 import { seedIntegrationSettingsFromEnv } from "./services/envSettings.js";
 import { sanitizeRequestForLog } from "./utils/logging.js";
 
@@ -143,6 +144,7 @@ export async function buildApp(env: AppEnv) {
     await api.register(cinemaRoutes);
     await api.register(tvMemoryRoutes);
     await api.register(shareRoutes);
+    await api.register(heimdallRoutes);
   }, { prefix: "/api" });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
