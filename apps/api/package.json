@@ -20,7 +20,7 @@
     "@fastify/formbody": "^7.4.0",
     "@fastify/multipart": "^8.3.0",
     "@fastify/sensible": "^5.6.0",
-    "@fastify/static": "^7.0.4",
+    "@fastify/static": "^10.1.2",
     "@fastify/swagger": "^8.15.0",
     "@fastify/swagger-ui": "^4.1.0",
     "@prisma/client": "^5.17.0",
