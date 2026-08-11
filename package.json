@@ -14,8 +14,9 @@
     "build": "npm run build -w @watchlog/shared && npm run build -w @watchlog/web && npm run build -w @watchlog/api",
     "typecheck": "npm run build -w @watchlog/shared && npm run prisma:generate && npm run typecheck -w @watchlog/api && npm run typecheck -w @watchlog/web",
     "lint": "npm run lint -w @watchlog/shared && npm run lint -w @watchlog/api && npm run lint -w @watchlog/web",
-    "test": "npm run test:compose && npm run build -w @watchlog/shared && npm run test -w @watchlog/api && npm run test -w @watchlog/web && npm run test -w @watchlog/shared",
+    "test": "npm run test:compose && npm run test:docker-context && npm run build -w @watchlog/shared && npm run test -w @watchlog/api && npm run test -w @watchlog/web && npm run test -w @watchlog/shared",
     "test:compose": "node scripts/check-compose-builds.mjs",
+    "test:docker-context": "node scripts/check-docker-context.mjs",
     "prisma:generate": "npm run prisma:generate -w @watchlog/api",
     "db:push": "npm run db:push -w @watchlog/api"
   },

@@ -1,5 +1,5 @@
 # Purpose: Verify every WatchLog change before it can become a deployable GitOps commit.
-# Input/Output: Repository source becomes typecheck, lint, test, and production-build results.
+# Input/Output: Repository source becomes code checks and a production container image build.
 # Invariants: Third-party actions stay immutable; the workflow only reads repository contents.
 # Debugging: Open the first failing step and reproduce its npm command from CONTRIBUTING.md.
 
@@ -16,8 +16,9 @@ permissions:
 
 jobs:
   test:
-    name: Typecheck, lint, test, build
+    name: Typecheck, lint, test, app and image build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,3 +43,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Why this exists: the deploy target builds from the repository context.
+      # CI catches missing ignore rules, Linux-only dependency errors, and image
+      # assembly failures before a bounded Broker deployment is attempted.
+      - name: Build production Docker image
+        run: docker build --build-arg APP_COMMIT="${GITHUB_SHA}" --tag watchlog-ci:test .

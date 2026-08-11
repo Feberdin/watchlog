@@ -9,11 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
   && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN npm install
+# Why this exists: `npm ci` installs exactly the reviewed lockfile and fails if
+# package metadata drifts, keeping local macOS dependencies out of the image.
+RUN npm ci
 
 FROM deps AS build
 ARG APP_COMMIT=unknown
