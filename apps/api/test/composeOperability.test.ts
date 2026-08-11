@@ -77,6 +77,7 @@ describe("Compose operability settings", () => {
 
       expect(helper).toMatchObject({
         restart: "no",
+        healthcheck: { disable: true },
         user: "0:0",
         read_only: true,
         cap_drop: ["ALL"],

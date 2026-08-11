@@ -44,6 +44,8 @@ services:
     user: "0:0"
     command: ["sh", "-c", "chown -R 1000:1000 /config /cache"]
     restart: "no"
+    healthcheck:
+      disable: true
     read_only: true
     security_opt:
       - no-new-privileges:true
