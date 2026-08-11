@@ -16,6 +16,8 @@ dist
 **/dist
 coverage
 **/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo
 .cache
 **/.cache
 .npm

@@ -297,7 +297,8 @@ The Docker healthcheck uses `/readyz`; `/healthz` only confirms that the API pro
 All Compose variants build the `watchlog` service once. The one-shot
 `watchlog-permissions` service then reuses that local image and must not define
 its own `build` section. `.dockerignore` also excludes local `node_modules`,
-generated output, VCS data, and env files. Verify both invariants with:
+generated output, TypeScript incremental state, VCS data, and env files. Verify
+both invariants with:
 
 ```bash
 npm run test:compose

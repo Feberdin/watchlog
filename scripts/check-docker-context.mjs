@@ -29,6 +29,8 @@ const requiredRules = [
   "**/dist",
   "coverage",
   "**/coverage",
+  "*.tsbuildinfo",
+  "**/*.tsbuildinfo",
 ];
 
 for (const requiredRule of requiredRules) {
