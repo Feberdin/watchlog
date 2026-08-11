@@ -114,17 +114,26 @@ export async function buildApp(env: AppEnv) {
       return;
     }
 
+    // Fastify 5 deliberately types thrown handler values as unknown. Normalize
+    // them once so logs stay useful without assuming every throw is an Error.
+    const normalizedError = error instanceof Error
+      ? error
+      : new Error("A request handler threw a non-Error value.");
+
     request.log.error({
       error: {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
+        name: normalizedError.name,
+        message: normalizedError.message,
+        stack: normalizedError.stack,
       },
     }, "Request failed");
-    const statusCode = "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
+    const statusCode = typeof error === "object" && error !== null
+      && "statusCode" in error && typeof error.statusCode === "number"
+      ? error.statusCode
+      : 500;
     reply.status(statusCode).send({
-      error: error.name,
-      message: error.message,
+      error: normalizedError.name,
+      message: normalizedError.message,
     });
   });
 
@@ -156,7 +165,7 @@ export async function buildApp(env: AppEnv) {
       prefix: "/",
       setHeaders(response, filePath) {
         if (filePath.endsWith("index.html")) {
-          response.setHeader("cache-control", "no-store");
+          response.header("cache-control", "no-store");
         }
       },
     });
