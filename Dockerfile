@@ -27,25 +27,32 @@ RUN npm run build -w @watchlog/shared
 RUN npm run build -w @watchlog/web
 RUN npm run build -w @watchlog/api
 RUN mkdir -p apps/api/web && cp -R apps/web/dist/* apps/api/web/
+# Why this exists: the runtime needs application dependencies, not compilers,
+# linters, test runners, or frontend build tooling. Pruning also keeps the
+# classic Unraid builder below its bounded image-export timeout.
+RUN npm prune --omit=dev
 
 FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --chown=node:node --from=build /app/package.json /app/package.json
-COPY --chown=node:node --from=build /app/node_modules /app/node_modules
-COPY --chown=node:node --from=build /app/apps/api/package.json /app/apps/api/package.json
-COPY --chown=node:node --from=build /app/apps/api/node_modules /app/apps/api/node_modules
-COPY --chown=node:node --from=build /app/apps/api/dist /app/apps/api/dist
-COPY --chown=node:node --from=build /app/apps/api/prisma /app/apps/api/prisma
-COPY --chown=node:node --from=build /app/apps/api/scripts /app/apps/api/scripts
-COPY --chown=node:node --from=build /app/apps/api/web /app/apps/api/web
-COPY --chown=node:node --from=build /app/packages/shared/package.json /app/packages/shared/package.json
-COPY --chown=node:node --from=build /app/packages/shared/dist /app/packages/shared/dist
+# Why this exists: immutable application files stay root-owned and world-readable.
+# Avoiding recursive ownership rewrites makes classic Docker image assembly much
+# faster while the process still runs without root privileges.
+COPY --from=build /app/package.json /app/package.json
+COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/apps/api/package.json /app/apps/api/package.json
+COPY --from=build /app/apps/api/node_modules /app/apps/api/node_modules
+COPY --from=build /app/apps/api/dist /app/apps/api/dist
+COPY --from=build /app/apps/api/prisma /app/apps/api/prisma
+COPY --from=build /app/apps/api/scripts /app/apps/api/scripts
+COPY --from=build /app/apps/api/web /app/apps/api/web
+COPY --from=build /app/packages/shared/package.json /app/packages/shared/package.json
+COPY --from=build /app/packages/shared/dist /app/packages/shared/dist
 
 # Why this exists: the long-running API must not have root privileges, while its
 # persistent cache/config mounts still need deterministic writable mount points.
 RUN mkdir -p /cache /config \
-  && chown -R node:node /app /cache /config
+  && chown -R node:node /cache /config
 EXPOSE 8111
 WORKDIR /app/apps/api
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \

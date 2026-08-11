@@ -306,6 +306,10 @@ npm run test:docker-context
 docker compose config
 ```
 
+The runtime image prunes development dependencies and keeps immutable `/app`
+files root-owned but readable. Only `/cache` and `/config` are writable by the
+non-root `node` process; this avoids expensive recursive ownership layers.
+
 If a broker deploy still times out, inspect the bounded broker job result and
 the build host's CPU, memory, and disk pressure before retrying the same commit.
 
