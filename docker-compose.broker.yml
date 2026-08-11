@@ -34,13 +34,11 @@ services:
 
   # Why this exists: existing named volumes may have been created by an older
   # root-running image. This one-shot helper fixes only volume ownership, drops
-  # all unrelated capabilities, and exits before the API starts.
+  # all unrelated capabilities, and exits before the API starts. It deliberately
+  # reuses the application image so a deployment performs one expensive build.
   watchlog-permissions:
-    build:
-      context: .
-      args:
-        APP_COMMIT: ${APP_COMMIT:-unknown}
-    pull_policy: build
+    image: watchlog-app:${WATCHLOG_IMAGE_TAG:-local}
+    pull_policy: never
     user: "0:0"
     command: ["sh", "-c", "chown -R 1000:1000 /config /cache"]
     restart: "no"
@@ -61,6 +59,7 @@ services:
       - watchlog-cache:/cache
 
   watchlog:
+    image: watchlog-app:${WATCHLOG_IMAGE_TAG:-local}
     build:
       context: .
       args:
