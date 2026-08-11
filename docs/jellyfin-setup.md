@@ -9,7 +9,7 @@ Debugging: Use WatchLog logs with `LOG_LEVEL=debug` and Jellyfin plugin delivery
 
 1. Install and enable a Jellyfin webhook plugin, then restart Jellyfin if the plugin page shows `Restart`.
 2. Create a webhook destination.
-3. Set URL to `http://WATCHLOG_HOST:8111/api/webhooks/jellyfin?secret=WEBHOOK_SECRET`.
+3. Set the destination to the WatchLog Jellyfin webhook path and enter the broker-managed webhook secret as the query parameter value. Example with non-secret placeholders: `http://<watchlog-host>:8111/api/webhooks/jellyfin?<secret-parameter-name>=<broker-managed-value>`.
 4. If the plugin supports custom headers, using `X-WatchLog-Webhook-Secret` instead of the query secret is also supported.
 5. For the plugin that only offers `Default`, `Get`, and `Plex`, choose `Default`. WatchLog understands its native JSON payload.
 6. Enable playback-related events: `Play`, `Progress`, `Stop`, `Scrobble`, and `MarkPlayed`.
