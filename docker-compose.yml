@@ -32,7 +32,34 @@ services:
       timeout: 5s
       retries: 10
 
+  # Why this exists: existing named volumes may have been created by an older
+  # root-running image. This one-shot helper fixes only volume ownership, drops
+  # all unrelated capabilities, and exits before the API starts. It deliberately
+  # reuses the application image so a deployment performs one expensive build.
+  watchlog-permissions:
+    image: watchlog-app:${WATCHLOG_IMAGE_TAG:-local}
+    pull_policy: never
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 1000:1000 /config /cache"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    logging: *watchlog-logging
+    volumes:
+      - watchlog-config:/config
+      - watchlog-cache:/cache
+
   watchlog:
+    image: watchlog-app:${WATCHLOG_IMAGE_TAG:-local}
     build:
       context: .
       args:
@@ -48,6 +75,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      watchlog-permissions:
+        condition: service_completed_successfully
     environment:
       APP_URL: ${APP_URL:-http://localhost:8111}
       APP_PORT: 8111
@@ -73,6 +102,7 @@ services:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8111/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
+      start_period: 20s
       retries: 5
 
 volumes:

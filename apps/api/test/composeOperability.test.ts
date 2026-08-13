@@ -1,7 +1,7 @@
 /**
  * Purpose: Validate Docker Compose operability settings that the Unraid Deployment Broker inspects.
- * Input/Output: Compose YAML files become assertions for healthchecks, restart policy, and log rotation.
- * Invariants: Long-running services must be monitorable and Docker logs must be bounded.
+ * Input/Output: Compose/Dockerfile text becomes assertions for health, privileges, and log rotation.
+ * Invariants: Long-running services are monitorable; the API is non-root; helper privileges stay bounded.
  * Debugging: If this test fails, update every Compose variant, not only the broker file.
  */
 
@@ -19,6 +19,13 @@ const composeFiles = [
 type ComposeService = {
   restart?: string;
   healthcheck?: unknown;
+  user?: string;
+  command?: string[];
+  read_only?: boolean;
+  cap_drop?: string[];
+  cap_add?: string[];
+  security_opt?: string[];
+  depends_on?: Record<string, { condition?: string }>;
   logging?: {
     driver?: string;
     options?: Record<string, string>;
@@ -45,10 +52,11 @@ function loadCompose(fileName: string) {
 
 describe("Compose operability settings", () => {
   for (const fileName of composeFiles) {
-    it(`${fileName} defines healthchecks, restart policy, and log rotation`, () => {
+    it(`${fileName} defines healthchecks, restart policy, and bounded logs`, () => {
       const compose = loadCompose(fileName);
 
-      for (const [serviceName, service] of Object.entries(compose.services)) {
+      for (const serviceName of ["db", "watchlog"]) {
+        const service = compose.services[serviceName];
         expect(service.restart, `${fileName}:${serviceName} restart`).toBe("unless-stopped");
         expect(service.healthcheck, `${fileName}:${serviceName} healthcheck`).toBeDefined();
         expect(service.logging, `${fileName}:${serviceName} logging`).toMatchObject({
@@ -61,6 +69,31 @@ describe("Compose operability settings", () => {
       }
 
       expect(JSON.stringify(compose.services.watchlog?.healthcheck)).toContain("/readyz");
+    });
+
+    it(`${fileName} constrains the one-shot volume ownership helper`, () => {
+      const compose = loadCompose(fileName);
+      const helper = compose.services["watchlog-permissions"];
+
+      expect(helper).toMatchObject({
+        restart: "no",
+        healthcheck: { disable: true },
+        user: "0:0",
+        read_only: true,
+        cap_drop: ["ALL"],
+        cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"],
+        security_opt: ["no-new-privileges:true"],
+      });
+      expect(helper.command?.join(" ")).toContain("chown -R 1000:1000 /config /cache");
+      expect(helper.logging).toMatchObject({
+        driver: "json-file",
+        options: {
+          "max-size": "10m",
+          "max-file": "3",
+        },
+      });
+      expect(compose.services.watchlog?.depends_on?.["watchlog-permissions"]?.condition)
+        .toBe("service_completed_successfully");
     });
   }
 
@@ -78,5 +111,14 @@ describe("Compose operability settings", () => {
         ],
       },
     });
+  });
+
+  it("the runtime image has a readiness healthcheck and runs as the node user", () => {
+    const dockerfilePath = resolve(process.cwd(), "../../Dockerfile");
+    const dockerfile = readFileSync(dockerfilePath, "utf8");
+
+    expect(dockerfile).toContain("HEALTHCHECK");
+    expect(dockerfile).toContain("/readyz");
+    expect(dockerfile).toMatch(/\nUSER node\n/);
   });
 });

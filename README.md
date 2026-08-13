@@ -123,6 +123,7 @@ Heimdall dashboard values for the Unraid/Broker setup are documented in [docs/he
 | `TMDB_BEARER_TOKEN` | No | empty | Enables TMDb search, posters, metadata, and recommendations. |
 | `REGISTRATION_ENABLED` | No | `false` | Allows additional registration after first admin. |
 | `LOG_LEVEL` | No | `info` | Use `debug` while integrating. |
+| `WATCHLOG_IMAGE_TAG` | No | `local` | Local image tag shared by the app and one-shot permissions helper. |
 | `SECURE_COOKIES` | No | `false` | Set `true` behind HTTPS. |
 | `CACHE_DIR` | No | `/cache` | Poster WebP cache path inside the container. |
 
@@ -290,6 +291,27 @@ docker compose exec db pg_isready -U watchlog -d watchlog
 
 Verify that `POSTGRES_PASSWORD` and `DATABASE_URL` use the same password.
 The Docker healthcheck uses `/readyz`; `/healthz` only confirms that the API process is alive.
+
+### Docker build reaches a deployment timeout
+
+All Compose variants build the `watchlog` service once. The one-shot
+`watchlog-permissions` service then reuses that local image and must not define
+its own `build` section. `.dockerignore` also excludes local `node_modules`,
+generated output, TypeScript incremental state, VCS data, and env files. Verify
+both invariants with:
+
+```bash
+npm run test:compose
+npm run test:docker-context
+docker compose config
+```
+
+The runtime image prunes development dependencies and keeps immutable `/app`
+files root-owned but readable. Only `/cache` and `/config` are writable by the
+non-root `node` process; this avoids expensive recursive ownership layers.
+
+If a broker deploy still times out, inspect the bounded broker job result and
+the build host's CPU, memory, and disk pressure before retrying the same commit.
 
 ### Login works but immediately returns to login
 

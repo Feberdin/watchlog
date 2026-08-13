@@ -1,0 +1,25 @@
+# Purpose: Keep local dependencies, outputs, secrets, and VCS data out of builds.
+# Input/Output: Docker reads this file before sending the repository build context.
+# Invariants: Dependency installation and compilation happen inside the Linux image.
+# Debugging: Run `npm run test:docker-context` and inspect `docker build --progress=plain .`.
+
+.git
+.github
+.DS_Store
+.env
+.env.*
+*.log
+
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+**/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo
+.cache
+**/.cache
+.npm
+tmp
+**/tmp

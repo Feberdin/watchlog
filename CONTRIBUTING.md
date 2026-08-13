@@ -34,7 +34,13 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm audit --audit-level=low
 ```
+
+The root workspace deliberately keeps the same `fastify` major version as
+`apps/api`. Fastify plugins are hoisted by npm, and this shared declaration
+ensures their TypeScript module augmentations resolve against one Fastify type
+instance. Update both declarations together when migrating Fastify.
 
 ## Coding Style
 

@@ -9,11 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
   && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN npm install
+# Why this exists: `npm ci` installs exactly the reviewed lockfile and fails if
+# package metadata drifts, keeping local macOS dependencies out of the image.
+RUN npm ci
 
 FROM deps AS build
 ARG APP_COMMIT=unknown
@@ -25,10 +27,17 @@ RUN npm run build -w @watchlog/shared
 RUN npm run build -w @watchlog/web
 RUN npm run build -w @watchlog/api
 RUN mkdir -p apps/api/web && cp -R apps/web/dist/* apps/api/web/
+# Why this exists: the runtime needs application dependencies, not compilers,
+# linters, test runners, or frontend build tooling. Pruning also keeps the
+# classic Unraid builder below its bounded image-export timeout.
+RUN npm prune --omit=dev
 
 FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
+# Why this exists: immutable application files stay root-owned and world-readable.
+# Avoiding recursive ownership rewrites makes classic Docker image assembly much
+# faster while the process still runs without root privileges.
 COPY --from=build /app/package.json /app/package.json
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/apps/api/package.json /app/apps/api/package.json
@@ -39,6 +48,14 @@ COPY --from=build /app/apps/api/scripts /app/apps/api/scripts
 COPY --from=build /app/apps/api/web /app/apps/api/web
 COPY --from=build /app/packages/shared/package.json /app/packages/shared/package.json
 COPY --from=build /app/packages/shared/dist /app/packages/shared/dist
+
+# Why this exists: the long-running API must not have root privileges, while its
+# persistent cache/config mounts still need deterministic writable mount points.
+RUN mkdir -p /cache /config \
+  && chown -R node:node /cache /config
 EXPOSE 8111
 WORKDIR /app/apps/api
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+  CMD node -e "fetch('http://localhost:8111/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+USER node
 CMD ["node", "scripts/docker-entrypoint.mjs"]
