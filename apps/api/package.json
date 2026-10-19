@@ -15,29 +15,29 @@
     "db:push": "prisma db push"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.1.2",
-    "@fastify/cors": "^11.3.0",
-    "@fastify/formbody": "^9.0.0",
-    "@fastify/multipart": "^10.1.0",
-    "@fastify/sensible": "^6.0.5",
-    "@fastify/static": "^10.1.3",
-    "@fastify/swagger": "^9.8.1",
-    "@fastify/swagger-ui": "^6.1.1",
-    "@prisma/client": "^5.17.0",
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/formbody": "^9.0.1",
+    "@fastify/multipart": "^10.1.4",
+    "@fastify/sensible": "^6.0.7",
+    "@fastify/static": "^10.1.6",
+    "@fastify/swagger": "^9.9.2",
+    "@fastify/swagger-ui": "^6.1.2",
+    "@prisma/client": "^7.10.1",
     "@watchlog/shared": "file:../../packages/shared",
-    "argon2": "^0.40.3",
-    "fastify": "^5.11.3",
-    "fastify-plugin": "^6.0.0",
-    "fastify-type-provider-zod": "^4.0.2",
-    "nanoid": "^5.1.16",
-    "pino": "^9.3.2",
-    "sharp": "^0.35.3",
-    "zod": "^3.23.8"
+    "argon2": "^0.45.1",
+    "fastify": "^5.12.7",
+    "fastify-plugin": "^6.0.1",
+    "fastify-type-provider-zod": "^7.0.0",
+    "nanoid": "^6.0.2",
+    "pino": "^10.4.0",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "prisma": "^5.17.0",
-    "tsx": "^4.16.2",
-    "typescript": "^5.5.3",
-    "vitest": "^4.1.10"
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }
